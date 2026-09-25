@@ -5,6 +5,7 @@ import pytest
 
 from devices.pdf_utils import generate_and_push
 from devices.tracing import sync_until, sync_with_false_mutex_retry
+from scenarios._integrity import wait_for_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class TestLww:
         # Divergence: the oracle rewrites the doc at a higher version with a
         # different name. Under the journal-free LWW engine the higher version
         # silently wins; there is no conflict-resolution UI anymore.
-        metadata = oracle.wait_for_metadata(doc_prefix)
+        metadata = wait_for_metadata(oracle, doc_prefix)
         assert metadata is not None, "Versioned metadata not found on server"
         meta, version, passphrase = metadata
         meta["name"] = "test-lww-divergent"

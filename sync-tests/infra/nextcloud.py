@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 COMPOSE_FILE = Path(__file__).parent.parent / "docker-compose.test.yml"
 NEXTCLOUD_CONTAINER = "sync-tests-nextcloud-1"
+NEXTCLOUD_USER = "testuser"
 PASS_PREFIX = "app/picpocket/tester"
 NCDATA_MOUNT_POINT = Path(__file__).parent.parent.parent / "tmp" / "nc_data"
 
@@ -57,6 +58,22 @@ def _occ(args: list[str], check: bool = False) -> subprocess.CompletedProcess:
         ["docker", "exec", NEXTCLOUD_CONTAINER] + OCC + args,
         check=check,
     )
+
+
+def scan_path(user_path: str) -> None:
+    """Rescan one Nextcloud path so its filecache picks up external-storage
+    changes. `user_path` is relative to the user's files, e.g.
+    "PicPocketTest/<docId>". Used as a last-resort filecache refresh when a
+    just-synced file isn't listed yet (the external storage is rclone-backed
+    and lags). Best-effort: logs and never raises.
+    """
+    rel = user_path.strip("/")
+    result = _occ(["files:scan", f"--path=/{NEXTCLOUD_USER}/files/{rel}"])
+    if result.returncode != 0:
+        logger.warning(_fail(f"files:scan --path={rel} failed", result))
+    else:
+        logger.info("Nextcloud filecache rescan requested for %s", rel)
+
 
 
 def _get_picpockettest_mounts() -> list[dict]:

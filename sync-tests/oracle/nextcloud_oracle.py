@@ -113,10 +113,23 @@ class NextcloudOracle:
                     files.append(name)
         return files
 
-    def get_file_content(self, path: str) -> bytes:
-        resp = requests.get(self._webdav_url(path), auth=self.auth, timeout=10)
-        resp.raise_for_status()
-        return resp.content
+    def get_file_content(self, path: str, retry_timeout: float = 60.0) -> bytes:
+        """GET a file's bytes.
+
+        Retries transient 5xx: the rclone-backed external storage briefly 503s
+        ("file doesn't seem to exist") while the write-back to Google Drive
+        settles after a sync. 4xx (genuine not-found) still raises immediately.
+        """
+        deadline = time.time() + retry_timeout
+        while True:
+            resp = requests.get(self._webdav_url(path), auth=self.auth, timeout=10)
+            if resp.status_code < 500 or time.time() >= deadline:
+                resp.raise_for_status()
+                return resp.content
+            logger.debug(
+                "get_file_content %s -> HTTP %d, retrying", path, resp.status_code
+            )
+            time.sleep(3)
 
     def head_file(self, path: str) -> tuple[bool, Optional[int]]:
         """PROPFIND a single file, returning (exists, content_length in bytes).
@@ -322,28 +335,53 @@ class NextcloudOracle:
         url = self._webdav_url(f"/PicPocketTest/{doc_id}/{name}")
         resp = requests.get(url, auth=self.auth, timeout=10)
         if resp.status_code != 200:
+            # 404 = genuinely absent yet; 5xx (e.g. 503 "file doesn't seem to
+            # exist" from the rclone-backed external storage) = transient while
+            # the write-back settles. Either way there is nothing to return.
+            logger.debug(
+                "read_metadata %s/%s -> HTTP %d", doc_id, name, resp.status_code
+            )
             return None
         content = resp.content
         if content.startswith(b"PKE1"):
             return None, version, passphrase
         return json.loads(content), version, passphrase
 
-    def wait_for_metadata(self, doc_id: str,
-                          timeout: float = 60.0) -> Optional[tuple[dict, int, int]]:
-        """Poll read_metadata until the doc's versioned metadata is listed.
+    def wait_for_metadata(self, doc_id: str, timeout: float = 180.0,
+                          interval: float = 3.0, refresh=None
+                          ) -> Optional[tuple[dict, int, int]]:
+        """Poll read_metadata until the doc's versioned metadata is readable.
 
-        The Nextcloud bridge/filecache serves folder listings from a cache that
-        lags server writes by a refresh cycle, so a just-synced metadata file
-        can be missing from the listing for a few seconds. read_metadata()
-        returns None in that window; converge here instead of unpacking None.
-        Returns the same tuple as read_metadata, or None on timeout.
+        Two transient conditions make read_metadata() return None right after a
+        sync: (a) the Nextcloud bridge/filecache listing hasn't picked up the
+        freshly-written metadata file yet, and (b) the rclone-backed external
+        storage briefly returns 5xx ("file doesn't seem to exist") while the
+        write-back to Google Drive settles. Poll through both. If `refresh` is
+        given it is invoked once when the first window elapses (e.g. a targeted
+        `occ files:scan` of the doc folder), then a short grace window is
+        polled. Returns the same tuple as read_metadata, or None on timeout.
         """
         deadline = time.time() + timeout
         while time.time() < deadline:
             result = self.read_metadata(doc_id)
             if result is not None:
                 return result
-            time.sleep(2)
+            time.sleep(interval)
+        if refresh is not None:
+            logger.warning(
+                "No metadata for %s after %.0fs; forcing a filecache refresh",
+                doc_id, timeout,
+            )
+            try:
+                refresh()
+            except Exception as e:  # noqa: BLE001 - best-effort fallback
+                logger.warning("metadata refresh callback failed: %s", e)
+            grace = time.time() + 30.0
+            while time.time() < grace:
+                result = self.read_metadata(doc_id)
+                if result is not None:
+                    return result
+                time.sleep(interval)
         return None
 
     def _metadata_entries(self, doc_id: str) -> list[tuple[str, int, int]]:
