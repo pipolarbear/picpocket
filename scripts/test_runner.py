@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from xml.etree import ElementTree
@@ -267,8 +268,22 @@ def avg_duration(db: dict, tier: str) -> float | None:
 # Subprocess helpers
 # ---------------------------------------------------------------------------
 
+# Operations to inhibit while tests run. `sleep` and `idle` block the desktop
+# from suspending/locking-to-sleep mid-run; `shutdown` and `handle-lid-switch`
+# cover manual shutdown / laptop lid close. Without this, a host suspend freezes
+# the emulators and the guest's clock jump fires a burst of Android ANRs on
+# resume (e.g. the Nextcloud bridge's "Timed out while trying to bind"), whose
+# modal dialog then blocks every UI interaction in the remaining tests.
+INHIBIT_WHAT = "idle:sleep:shutdown:handle-lid-switch"
+
+
+def _inhibit_cmd(cmd: list[str]) -> list[str]:
+    """Prepend systemd-inhibit so the child holds a sleep/idle inhibitor."""
+    return ["systemd-inhibit", f"--what={INHIBIT_WHAT}", "--", *cmd]
+
+
 def run(cmd: list[str], cwd: Path, log_path: Path, verbose: bool,
-        env: dict | None = None, line_cb=None) -> int:
+        env: dict | None = None, line_cb=None, inhibit: bool = False) -> int:
     """Run a command, teeing output to a log file.
 
     In verbose mode the output is also streamed to the console. `line_cb`
@@ -279,8 +294,13 @@ def run(cmd: list[str], cwd: Path, log_path: Path, verbose: bool,
     exits. PYTHONUNBUFFERED keeps the child (pytest) from block-buffering its
     own stdout in the pipe -- without it, the log stays empty until ~8KB
     accumulates and the progress callback fires in bursts.
+
+    `inhibit` wraps the command in `systemd-inhibit` (Linux) so a host
+    suspend can't interrupt a long phase.
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    if inhibit and sys.platform.startswith("linux"):
+        cmd = _inhibit_cmd(cmd)
     full_env = os.environ.copy()
     full_env.setdefault("PYTHONUNBUFFERED", "1")
     if env:
@@ -300,13 +320,21 @@ def run(cmd: list[str], cwd: Path, log_path: Path, verbose: bool,
 
 
 def run_parallel(cmds: list[tuple[str, list[str], dict[str, str] | None]], cwd: Path,
-                 verbose: bool, line_cb=None) -> int:
+                 verbose: bool, line_cb=None, inhibit: bool = False) -> int:
     """Run several commands concurrently, each teeing to its own log file.
 
     `cmds` is a list of (name, cmd, extra_env). Logs go to LOG_DIR/<name>.log.
     Returns the worst (max) exit code. Logs are flushed per line and children
-    run with PYTHONUNBUFFERED, same rationale as `run`.
+    run with PYTHONUNBUFFERED, same rationale as `run`. `inhibit` wraps each
+    worker in `systemd-inhibit` (Linux).
+
+    All workers are drained CONCURRENTLY (one reader thread each). Draining
+    them one after another would leave the second worker's log empty and its
+    progress callbacks unfired until the first worker exits, and would stall
+    that worker once its stdout exceeded the OS pipe buffer (~64KB).
     """
+    if inhibit and sys.platform.startswith("linux"):
+        cmds = [(name, _inhibit_cmd(cmd), extra_env) for name, cmd, extra_env in cmds]
     procs = []
     for name, cmd, extra_env in cmds:
         log_path = LOG_DIR / f"{name}.log"
@@ -319,8 +347,12 @@ def run_parallel(cmds: list[tuple[str, list[str], dict[str, str] | None]], cwd: 
             cmd, cwd=cwd, env=full_env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )))
-    rc = 0
-    for name, proc in procs:
+
+    # Active workers share progress state, so serialize the callback.
+    cb_lock = threading.Lock()
+    rc_by_name: dict[str, int] = {}
+
+    def _drain(name: str, proc: subprocess.Popen) -> None:
         log_path = LOG_DIR / f"{name}.log"
         with log_path.open("w", buffering=1) as log:
             for line in proc.stdout:
@@ -328,9 +360,19 @@ def run_parallel(cmds: list[tuple[str, list[str], dict[str, str] | None]], cwd: 
                 if verbose:
                     console.print(line, end="", highlight=False)
                 if line_cb:
-                    line_cb(line)
-        rc = max(rc, proc.wait())
-    return rc
+                    with cb_lock:
+                        line_cb(line)
+        rc_by_name[name] = proc.wait()
+
+    threads = [
+        threading.Thread(target=_drain, args=(name, proc), name=f"drain-{name}")
+        for name, proc in procs
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return max([0, *rc_by_name.values()])
 
 
 def gradle(args: list[str], log_path: Path, verbose: bool, env: dict | None = None) -> int:
@@ -343,9 +385,8 @@ def pytest(args: list[str], log_path: Path, verbose: bool, env: dict | None = No
     if inhibit and not sys.platform.startswith("linux"):
         console.print("[yellow]WARN[/] systemd-inhibit unavailable, skipping")
         inhibit = False
-    if inhibit:
-        cmd = ["systemd-inhibit", "--what=sleep", "--", *cmd]
-    return run(cmd, SYNC_TESTS, log_path, verbose, env=env, line_cb=line_cb)
+    return run(cmd, SYNC_TESTS, log_path, verbose, env=env, line_cb=line_cb,
+               inhibit=inhibit)
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +602,8 @@ def _run_scenario_all(args, log_dir, verbose, progress, db):
         worker_cmds.append((f"scenario-{worker}", worker_args,
                             {"EMULATOR_SERIAL": serial, "NEXTCLOUD_SUBDIR": worker}))
     start = time.time()
-    rc = run_parallel(worker_cmds, SYNC_TESTS, verbose, line_cb=on_line)
+    inhibit = TIERS["scenario"].get("inhibit_sleep", False)
+    rc = run_parallel(worker_cmds, SYNC_TESTS, verbose, line_cb=on_line, inhibit=inhibit)
     state["rc"] = max(state["rc"], rc)
 
     # Phase 2: serial two-device scenarios
@@ -569,7 +611,7 @@ def _run_scenario_all(args, log_dir, verbose, progress, db):
     if args.passthrough:
         serial_args += args.passthrough.split()
     rc = run(serial_args, SYNC_TESTS, log_dir / "scenario-serial.log",
-             verbose, line_cb=on_line)
+             verbose, line_cb=on_line, inhibit=inhibit)
     state["rc"] = max(state["rc"], rc)
 
     duration = time.time() - start
@@ -610,7 +652,8 @@ def _run_scenario_nodeids(nodeids: list[str], args, log_dir, verbose, progress, 
     if args.passthrough:
         cmd += args.passthrough.split()
     start = time.time()
-    rc = run(cmd, SYNC_TESTS, log_dir / "scenario-failed.log", verbose, line_cb=on_line)
+    rc = run(cmd, SYNC_TESTS, log_dir / "scenario-failed.log", verbose,
+             line_cb=on_line, inhibit=TIERS["scenario"].get("inhibit_sleep", False))
     state["rc"] = rc
     duration = time.time() - start
     status = "fail" if state["rc"] != 0 else "pass"

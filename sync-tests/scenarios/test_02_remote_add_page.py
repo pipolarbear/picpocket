@@ -30,8 +30,9 @@ class TestRemoteAddPage:
         assert doc_prefix, "Doc not found in Drive after initial sync"
 
         # Oracle adds a page out-of-band and bumps the metadata version.
-        meta, version, passphrase = oracle.read_metadata(doc_prefix)
-        assert meta is not None, "Versioned metadata not found on server"
+        metadata = oracle.wait_for_metadata(doc_prefix)
+        assert metadata is not None, "Versioned metadata not found on server"
+        meta, version, passphrase = metadata
         pages = meta.get("pages", [])
         assert pages, "Doc should have at least one page on the server"
         next_page_number = max(p["pageNumber"] for p in pages) + 1
@@ -71,4 +72,4 @@ class TestRemoteAddPage:
         )
 
         emu_a._go_home(timeout=15.0)
-        assert emu_a.assert_doc_exists("test-remote"), "Doc missing after page add"
+        assert emu_a.find_local_doc("test-remote"), "Doc not present after page add"
