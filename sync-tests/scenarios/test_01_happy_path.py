@@ -24,7 +24,8 @@ class TestHappyPath:
         sync_with_false_mutex_retry(emu_a, watcher_a)
 
         emu_a._go_home(timeout=10.0)
-        assert emu_a.assert_doc_exists("test-3page"), "Doc not visible"
+        # Store is the ground truth; the home UI can lag a recomposition.
+        assert emu_a.find_local_doc("test-3page"), "Doc not present after sync"
 
         assert_drive_verified(oracle, drive_finality=True)
 
@@ -56,8 +57,8 @@ class TestHappyPath:
         )
         emu_a._go_home(timeout=10.0)
         for name in ("test-batch-1", "test-batch-2", "test-batch-3"):
-            assert emu_a.assert_doc_exists(name), (
-                f"{name} not visible after batch sync"
+            assert emu_a.find_local_doc(name), (
+                f"{name} not present after batch sync"
             )
 
     def test_b_downloads_from_other_device(
@@ -94,4 +95,4 @@ class TestHappyPath:
         )
 
         emu_b._go_home(timeout=10.0)
-        assert emu_b.assert_doc_exists("test-3page"), "Doc not visible on device B"
+        assert emu_b.find_local_doc("test-3page"), "Doc not present on device B"

@@ -123,9 +123,9 @@ class TestContention:
         # and complete as a no-op; re-sync until each doc actually lands.
         assert sync_until(
             emu_b, watcher_b,
-            check=lambda: emu_b.assert_doc_exists("test-contention"),
-        ), "Baseline doc not visible on B after contention"
+            check=lambda: emu_b.find_local_doc("test-contention") is not None,
+        ), "Baseline doc not present on B after contention"
         assert sync_until(
             emu_b, watcher_b,
-            check=lambda: emu_b.assert_doc_exists("test-contention-big-0"),
-        ), "Big doc not visible on B after contention"
+            check=lambda: emu_b.find_local_doc("test-contention-big-0") is not None,
+        ), "Big doc not present on B after contention"

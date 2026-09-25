@@ -63,4 +63,4 @@ class TestNoopResync:
             )
 
         emu_a._go_home(timeout=10.0)
-        assert emu_a.assert_doc_exists("test-noop"), "Doc not visible after re-sync"
+        assert emu_a.find_local_doc("test-noop"), "Doc not present after re-sync"

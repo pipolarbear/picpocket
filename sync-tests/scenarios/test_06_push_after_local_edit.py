@@ -143,7 +143,8 @@ class TestPushAfterLocalEdit:
         )
 
         emu_a._go_home(timeout=10.0)
-        assert emu_a.assert_doc_exists("test-push"), "Doc not visible after push"
+        # Store is the ground truth; the home UI can lag a recomposition.
+        assert emu_a.find_local_doc("test-push"), "Doc not present locally after push"
         assert emu_a.page_file_exists(doc_prefix, new_file, timeout=5.0), (
             "New page file missing locally after push"
         )

@@ -205,6 +205,10 @@ class DeviceRegistry @Inject constructor(
             try { context.contentResolver.refresh(root.uri, null, null) } catch (_: Throwable) { }
             val file = root.listFiles().find { it.name == REGISTRY_FILE }
             if (file == null) { Tracing.w(Category.STORE_STATE, TAG, "syncRegistryFromDrive: $REGISTRY_FILE not found"); return }
+            // Refresh the file node too: the bridge serves document contents
+            // from a cache that lags the server by a refresh cycle, so the root
+            // refresh alone can still yield an empty read for this file.
+            try { context.contentResolver.refresh(file.uri, null, null) } catch (_: Throwable) { }
             val bytes = context.contentResolver.openInputStream(file.uri)?.use { it.readBytes() }
             if (bytes == null || bytes.isEmpty()) {
                 Tracing.w(Category.STORE_STATE, TAG, "syncRegistryFromDrive: attempt $attempt read ${bytes?.size ?: 0} bytes, retrying")
@@ -270,8 +274,8 @@ class DeviceRegistry @Inject constructor(
         private const val REGISTRY_FILE = "devices.json"
         private const val REGISTRY_WRITE_ATTEMPTS = 3
         private const val REGISTRY_WRITE_RETRY_DELAY_MS = 2_000L
-        private const val REGISTRY_READ_ATTEMPTS = 3
-        private const val REGISTRY_READ_RETRY_DELAY_MS = 2_000L
+        private const val REGISTRY_READ_ATTEMPTS = 5
+        private const val REGISTRY_READ_RETRY_DELAY_MS = 3_000L
     }
 }
 

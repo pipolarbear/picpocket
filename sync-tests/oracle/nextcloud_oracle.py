@@ -328,6 +328,24 @@ class NextcloudOracle:
             return None, version, passphrase
         return json.loads(content), version, passphrase
 
+    def wait_for_metadata(self, doc_id: str,
+                          timeout: float = 60.0) -> Optional[tuple[dict, int, int]]:
+        """Poll read_metadata until the doc's versioned metadata is listed.
+
+        The Nextcloud bridge/filecache serves folder listings from a cache that
+        lags server writes by a refresh cycle, so a just-synced metadata file
+        can be missing from the listing for a few seconds. read_metadata()
+        returns None in that window; converge here instead of unpacking None.
+        Returns the same tuple as read_metadata, or None on timeout.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            result = self.read_metadata(doc_id)
+            if result is not None:
+                return result
+            time.sleep(2)
+        return None
+
     def _metadata_entries(self, doc_id: str) -> list[tuple[str, int, int]]:
         """Return (name, version, passphrase) for each metadata.*.json file."""
         entries = []

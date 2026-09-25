@@ -73,6 +73,6 @@ class TestCorruptRegistry:
         )
 
         emu_a._go_home(timeout=10.0)
-        assert emu_a.assert_doc_exists("test-registry"), (
-            "Doc not visible after registry-halted sync"
+        assert emu_a.find_local_doc("test-registry"), (
+            "Doc not present after registry-halted sync"
         )

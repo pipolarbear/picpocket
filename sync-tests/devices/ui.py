@@ -75,12 +75,15 @@ class UiDevice:
                 return True
             self._go_home(timeout=8.0)
             time.sleep(1)
-        # Not foreground or on an unexpected screen: relaunch and try once more.
-        self.open_app()
+        # The Settings icon lives on the app's home screen. Get back there and
+        # try once more. Use _go_home (not open_app): it only relaunches if the
+        # app is genuinely not running, so a transient in-memory SyncState
+        # error (e.g. "Wrong passphrase") set by a gating sync survives.
+        self._go_home(timeout=15.0)
         if self.d(description="Settings").exists:
             self.d(description="Settings").click(timeout=5)
             if self.d(text="Settings").wait(timeout=10.0):
-                logger.debug("Settings opened after relaunch on %s", self.serial)
+                logger.debug("Settings opened after returning home on %s", self.serial)
                 return True
         logger.error("Settings screen did not open on %s", self.serial)
         return False
@@ -187,8 +190,18 @@ class UiDevice:
         return False
 
     def import_pdf(self, pdf_name: str, timeout: float = 30.0):
-        self._go_home(timeout=10.0)
+        # open_app guarantees PicPocket is in front (relaunching if a previous
+        # import left it backgrounded); otherwise the Import button lookup
+        # silently no-ops and the doc never lands.
+        self.open_app()
         import_btn = self.d(description="Import PDF")
+        if not import_btn.wait(timeout=5.0):
+            logger.warning(
+                "Import PDF button not found on %s (current=%s); relaunching",
+                self.serial, self.d.app_current(),
+            )
+            self.open_app()
+            import_btn = self.d(description="Import PDF")
         if import_btn.wait(timeout=5.0):
             import_btn.click()
             # Wait for the SAF picker to come up instead of sleeping a fixed 3s
@@ -331,12 +344,30 @@ class UiDevice:
 
     def _go_home(self, timeout: float = 10.0):
         deadline = time.time() + timeout
+        back_presses = 0
         while time.time() < deadline:
             current = self.d.app_current()
             if current.get("package") != APP_PACKAGE:
-                self.d.press("back")
-                time.sleep(1)
+                # Not our app in front. Press back a couple of times to dismiss
+                # any system picker/dialog covering it; if it still isn't
+                # foreground, relaunch it — it may have been backgrounded or
+                # killed between steps (e.g. across the SAF picker), and
+                # pressing back into the launcher never recovers.
+                if back_presses < 2:
+                    self.d.press("back")
+                    back_presses += 1
+                    time.sleep(1)
+                    continue
+                logger.warning(
+                    "App not foreground in _go_home (current=%s); relaunching on %s",
+                    current, self.serial,
+                )
+                self.d.app_start(APP_PACKAGE)
+                time.sleep(3)
+                deadline = time.time() + 10.0
+                back_presses = 0
                 continue
+            back_presses = 0
             if self.d(text="PicPocket").exists or self.d(text="No documents yet").exists:
                 return
             if self.d(text="PicPocket").wait(timeout=3.0):

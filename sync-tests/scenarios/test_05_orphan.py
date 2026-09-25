@@ -31,7 +31,7 @@ class TestOrphan:
         assert doc_prefix, "Doc not found in Drive after A's initial sync"
 
         emu_a._go_home(timeout=10.0)
-        assert emu_a.assert_doc_exists("test-orphan"), "Doc not visible on device A"
+        assert emu_a.find_local_doc("test-orphan"), "Doc not present on device A"
 
         emu_b.ensure_drive_configured()
 
@@ -51,7 +51,7 @@ class TestOrphan:
         )
 
         emu_b._go_home(timeout=10.0)
-        assert emu_b.assert_doc_exists("test-orphan"), "Doc not visible on device B"
+        assert emu_b.find_local_doc("test-orphan"), "Doc not present on device B"
 
         # Phase 2: delete propagation + orphan surfacing on B.
         #

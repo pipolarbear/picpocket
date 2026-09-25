@@ -94,7 +94,13 @@ class TestEncryption:
         logger.info("Stale passphrase gating on B: %s", stale)
         emu_b.open_settings()
         emu_b.d(text="Sync").click()
+        # The wrong-passphrase error is a transient in-memory SyncState, not
+        # persisted. If it isn't showing yet, trigger one more gating sync while
+        # the Sync screen is visible so the error is freshly set.
         error_text = emu_b.d(textContains="Wrong passphrase")
+        if not error_text.wait(timeout=5.0):
+            emu_b.trigger_sync()
+            error_text = emu_b.d(textContains="Wrong passphrase")
         assert error_text.wait(timeout=10.0), "Wrong-passphrase error not shown on B"
 
         # B adopts the new passphrase and syncs again.

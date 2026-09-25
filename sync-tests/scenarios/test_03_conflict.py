@@ -28,8 +28,9 @@ class TestLww:
         # Divergence: the oracle rewrites the doc at a higher version with a
         # different name. Under the journal-free LWW engine the higher version
         # silently wins; there is no conflict-resolution UI anymore.
-        meta, version, passphrase = oracle.read_metadata(doc_prefix)
-        assert meta is not None, "Versioned metadata not found on server"
+        metadata = oracle.wait_for_metadata(doc_prefix)
+        assert metadata is not None, "Versioned metadata not found on server"
+        meta, version, passphrase = metadata
         meta["name"] = "test-lww-divergent"
         oracle.write_metadata(doc_prefix, meta, version + 2, passphrase)
 
@@ -45,11 +46,11 @@ class TestLww:
         )
 
         emu_a._go_home(timeout=15.0)
-        assert emu_a.assert_doc_exists("test-lww-divergent"), (
+        assert emu_a.find_local_doc("test-lww-divergent"), (
             "LWW did not converge on the higher-versioned remote name"
         )
-        assert not emu_a.assert_doc_exists("test-lww"), (
-            "Old divergent name still shown after LWW"
+        assert emu_a.find_local_doc("test-lww") is None, (
+            "Old divergent name still present after LWW"
         )
 
         # The Sync screen no longer surfaces a conflict count for divergence.

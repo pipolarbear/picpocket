@@ -67,7 +67,9 @@ class TestPassphraseChange:
         # don't list a not-yet-flushed folder.
         assert_drive_verified(oracle, drive_finality=True)
 
-        meta, version, passphrase = oracle.read_metadata(doc_prefix)
+        metadata = oracle.wait_for_metadata(doc_prefix)
+        assert metadata is not None, "No versioned metadata on server after enabling encryption"
+        meta, version, passphrase = metadata
         assert meta is None, "Metadata should be encrypted on server"
         assert passphrase == 1, f"Expected metadata generation 1, got {passphrase}"
         files1 = oracle.list_folder_with_lengths(f"/PicPocketTest/{doc_prefix}")
@@ -90,8 +92,8 @@ class TestPassphraseChange:
         emu_b._go_home(timeout=10.0)
         assert sync_until(
             emu_b, watcher_b,
-            check=lambda: emu_b.assert_doc_exists("test-pw"),
-        ), "Doc not visible on B with P1"
+            check=lambda: emu_b.find_local_doc("test-pw") is not None,
+        ), "Doc not present on B with P1"
 
         # A rotates to P2: the auto-sync re-encrypts every page (new key ->
         # different ciphertext) and bumps the metadata generation to 2.
@@ -102,7 +104,9 @@ class TestPassphraseChange:
         sync_with_false_mutex_retry(emu_a, watcher_a, trigger=False, timeout=150.0)
         assert_drive_verified(oracle, drive_finality=True)
 
-        _, _, passphrase2 = oracle.read_metadata(doc_prefix)
+        metadata2 = oracle.wait_for_metadata(doc_prefix)
+        assert metadata2 is not None, "No versioned metadata on server after rotation"
+        _, _, passphrase2 = metadata2
         assert passphrase2 == 2, f"Expected metadata generation 2, got {passphrase2}"
         p2_bytes = oracle.get_file_content(f"/PicPocketTest/{doc_prefix}/{page_name}")
         assert p2_bytes != p1_bytes, (
@@ -128,8 +132,8 @@ class TestPassphraseChange:
         emu_b._go_home(timeout=10.0)
         assert sync_until(
             emu_b, watcher_b,
-            check=lambda: emu_b.assert_doc_exists("test-pw"),
-        ), "Doc not visible on B after P2"
+            check=lambda: emu_b.find_local_doc("test-pw") is not None,
+        ), "Doc not present on B after P2"
         assert_drive_verified(oracle, drive_finality=True)
 
     @staticmethod
