@@ -13,7 +13,7 @@ from devices.tracing import (
     sync_with_false_mutex_retry,
     wait_for_pattern_with_false_mutex_retry,
 )
-from scenarios._integrity import assert_drive_verified
+from scenarios._integrity import assert_drive_verified, wait_for_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class TestPassphraseChange:
         # don't list a not-yet-flushed folder.
         assert_drive_verified(oracle, drive_finality=True)
 
-        metadata = oracle.wait_for_metadata(doc_prefix)
+        metadata = wait_for_metadata(oracle, doc_prefix)
         assert metadata is not None, "No versioned metadata on server after enabling encryption"
         meta, version, passphrase = metadata
         assert meta is None, "Metadata should be encrypted on server"
@@ -104,7 +104,7 @@ class TestPassphraseChange:
         sync_with_false_mutex_retry(emu_a, watcher_a, trigger=False, timeout=150.0)
         assert_drive_verified(oracle, drive_finality=True)
 
-        metadata2 = oracle.wait_for_metadata(doc_prefix)
+        metadata2 = wait_for_metadata(oracle, doc_prefix)
         assert metadata2 is not None, "No versioned metadata on server after rotation"
         _, _, passphrase2 = metadata2
         assert passphrase2 == 2, f"Expected metadata generation 2, got {passphrase2}"

@@ -14,9 +14,24 @@ module.
 import logging
 import time
 
-from infra.nextcloud import wait_drive_finalized
+from infra.nextcloud import scan_path, wait_drive_finalized
 
 logger = logging.getLogger(__name__)
+
+
+def wait_for_metadata(oracle, doc_id):
+    """Read a doc's versioned metadata, converging over the Nextcloud bridge
+    filecache lag and the rclone-backed external storage's transient 5xx.
+
+    On timeout it forces a targeted `occ files:scan` of the doc folder and
+    polls a short grace window, so a just-rewritten metadata file that the
+    filecache hasn't picked up yet still resolves. Returns the same tuple as
+    oracle.read_metadata, or None if it never appears.
+    """
+    return oracle.wait_for_metadata(
+        doc_id,
+        refresh=lambda: scan_path(f"PicPocketTest/{doc_id}"),
+    )
 
 
 def assert_doc_integrity(oracle, folder, settle=5.0, on_file_fail=None,
