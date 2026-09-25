@@ -134,37 +134,43 @@ clear-rclone-cache:
 # Unified test runner — the single entry point for all test tiers.
 # ---------------------------------------------------------------------------
 
+# Every test run holds a systemd inhibitor (idle/sleep/shutdown/lid) so a host
+# screen-lock auto-suspend can't freeze the emulators mid-run: a suspend makes
+# the guest clock jump on resume, firing a burst of ANRs whose modal dialog
+# then blocks all remaining UI tests.
+inhibit := "systemd-inhibit --what=idle:sleep:shutdown:handle-lid-switch --"
+
 # Run every test tier in dependency order: unit → infra → instrumented → saf →
 # scenario. Tiers whose dependency failed in the same run are skipped (e.g.
 # scenario is not executed when saf or infra failed). Extra args are forwarded
 # to the runner (e.g. --name <pattern>). Use -v for streaming output.
 test *args:
-    python scripts/test_runner.py {{args}}
+    {{inhibit}} python scripts/test_runner.py {{args}}
 
 # Run every tier (equivalent to `just test` with no args).
 test-all:
-    python scripts/test_runner.py
+    {{inhibit}} python scripts/test_runner.py
 
 # Rerun only the tests that failed in the last recorded run. Gradle tiers are
 # filtered by failed class (from JUnit XML), pytest tiers use --lf. The same
 # dependency gating applies (a tier whose dependency failed is skipped).
 test-failed *args:
-    python scripts/test_runner.py --failed {{args}}
+    {{inhibit}} python scripts/test_runner.py --failed {{args}}
 
 # Run only the tests whose name contains <pattern> (e.g. "test_09").
 test-name +pattern:
-    python scripts/test_runner.py --name {{pattern}}
+    {{inhibit}} python scripts/test_runner.py --name {{pattern}}
 
 # Run only the given group(s), comma-separated:
 #   unit | instrumented | infra | saf | scenario
 # Dependencies are consulted in the results DB: a recorded FAILED dependency
 # skips the tier (override with --force); no record warns and proceeds.
 test-group +groups:
-    python scripts/test_runner.py --group {{groups}}
+    {{inhibit}} python scripts/test_runner.py --group {{groups}}
 
 # Stream all subprocess output live (detailed run), otherwise bars + summary.
 test-v *args:
-    python scripts/test_runner.py -v {{args}}
+    {{inhibit}} python scripts/test_runner.py -v {{args}}
 
 # Show the tier plan, dependency edges, estimated durations and overall ETA
 # without executing anything.
@@ -181,7 +187,7 @@ test-dry-run:
 # Used to gain confidence in the storage primitives.
 # Extra args (e.g. -k <expr>, --maxfail=1) are forwarded to pytest via --args.
 infra-test *args:
-    python scripts/test_runner.py --group infra --args "{{args}}"
+    {{inhibit}} python scripts/test_runner.py --group infra --args "{{args}}"
 
 # FOCUSED SAF CHAIN: scenarios/test_saf_to_drive.py (4 tests: folder select,
 # small/large file, reinstall). A fast single-device SUBSET of scenario-single
@@ -189,7 +195,7 @@ infra-test *args:
 # SAF -> WebDAV -> rclone -> Drive chain. ~10 min.
 # Extra args (e.g. --no-reset, --maxfail=1) are forwarded to pytest via --args.
 saf-test *args:
-    python scripts/test_runner.py --group saf --args "{{args}}"
+    {{inhibit}} python scripts/test_runner.py --group saf --args "{{args}}"
 
 # SINGLE-DEVICE sync scenarios, 2-way parallel.
 # Builds the APK, boots BOTH emulators, and runs the 13 single-device tests
