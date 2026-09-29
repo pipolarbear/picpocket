@@ -4,7 +4,7 @@ Thanks for your interest in PicPocket! Here's how to get involved.
 
 ## Bug Reports
 
-Open a [GitHub issue](https://github.com/perplexedpigmy/picpocket/issues/new) with:
+Open a [GitHub issue](https://github.com/pipolarbear/picpocket/issues/new) with:
 
 - Device model and Android version
 - Steps to reproduce
@@ -13,7 +13,7 @@ Open a [GitHub issue](https://github.com/perplexedpigmy/picpocket/issues/new) wi
 
 ## Feature Requests
 
-Open a [GitHub issue](https://github.com/perplexedpigmy/picpocket/issues/new) with:
+Open a [GitHub issue](https://github.com/pipolarbear/picpocket/issues/new) with:
 
 - What the feature does and why it's useful
 - Any relevant examples or references
@@ -23,7 +23,7 @@ Open a [GitHub issue](https://github.com/perplexedpigmy/picpocket/issues/new) wi
 1. Fork the repository
 2. Create a branch: `git checkout -b feature/my-feature`
 3. Make your changes
-4. Run tests: `./gradlew testDebug`
+4. Run tests: `./gradlew testDebugUnitTest`
 5. Commit with a [conventional commit](https://www.conventionalcommits.org/) message:
 
    ```
@@ -45,6 +45,6 @@ Open a [GitHub issue](https://github.com/perplexedpigmy/picpocket/issues/new) wi
 
 ### Before Submitting
 
-- `./gradlew testDebug` — all 90+ tests must pass
+- `./gradlew testDebugUnitTest` — the unit suite must pass
 - `./gradlew assembleDebug` — must build clean
 - Verify on a physical device if your change touches camera, PDF, or SAF logic (emulator limitations)
