@@ -98,6 +98,7 @@ class DocumentDetailViewModel @Inject constructor(
 
     fun loadDocument(documentId: DocumentId) {
         currentDocumentId = documentId
+        viewModelScope.launch { repository.markDocumentAccessed(documentId) }
         viewModelScope.launch {
             repository.observeDocument(documentId).collect { doc ->
                 _uiState.update { it.copy(document = doc) }

@@ -7,6 +7,9 @@ import java.io.File
 import com.picpocket.app.data.local.PicPocketDatabase
 import com.picpocket.app.data.repository.DocumentRepositoryImpl
 import com.picpocket.app.data.store.DocumentStore
+import com.picpocket.app.data.workflow.DocumentEvent
+import com.picpocket.app.data.workflow.DocumentEventBus
+import com.picpocket.app.domain.workflow.model.TriggerEvent
 import com.picpocket.app.domain.ocr.OcrEngine
 import com.picpocket.app.domain.ocr.OcrManager
 import com.picpocket.app.domain.pdfimport.PdfPageImportResult
@@ -16,6 +19,8 @@ import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -55,6 +60,7 @@ class DocumentRepositoryTest {
 
     private lateinit var database: PicPocketDatabase
     private lateinit var repository: DocumentRepositoryImpl
+    private val eventBus = DocumentEventBus()
 
     @Before
     fun setUp() {
@@ -66,7 +72,7 @@ class DocumentRepositoryTest {
         repository = DocumentRepositoryImpl(
             store = DocumentStore(app),
             tagDao = database.tagDao(),
-            tagAutomationDao = database.tagAutomationDao(),
+            eventBus = eventBus,
             pdfPageImporter = PdfPageImporter(),
             ocrManager = com.picpocket.app.domain.ocr.OcrManager(
                 object : OcrEngine {
@@ -77,6 +83,7 @@ class DocumentRepositoryTest {
                 DocumentStore(app),
             ),
             app = app,
+            documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
         )
     }
 
@@ -92,6 +99,28 @@ class DocumentRepositoryTest {
         val doc = repository.getDocument(id).getOrNull()
         assertNotNull(doc)
         assertEquals("Test Doc", doc?.name)
+    }
+
+    @Test
+    fun `mutations emit document events`() = runTest {
+        val received = mutableListOf<DocumentEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            eventBus.events.collect { received += it }
+        }
+        val id = repository.createDocument("Doc").getOrThrow()
+        assertTrue(received.any { it.event == TriggerEvent.DOC_CREATED && it.documentId == id })
+
+        repository.updateDocumentName(id, "Renamed")
+        assertTrue(received.any { it.event == TriggerEvent.RENAMED && it.documentId == id })
+
+        val tagId = repository.createTag("t")
+        repository.setDocumentTags(id, listOf(tagId))
+        assertTrue(received.any { it.event == TriggerEvent.TAGGED && it.documentId == id })
+        repository.setDocumentTags(id, emptyList())
+        assertTrue(received.any { it.event == TriggerEvent.UNTAGGED && it.documentId == id })
+
+        repository.deleteDocument(id)
+        assertTrue(received.any { it.event == TriggerEvent.DELETED && it.documentId == id })
     }
 
     @Test
@@ -254,6 +283,72 @@ class DocumentRepositoryTest {
     }
 
     @Test
+    fun `renaming a tag updates document references`() = runTest {
+        val docId = repository.createDocument("Doc").getOrThrow()
+        val tagId = repository.createTag("Old Name")
+        repository.setDocumentTags(docId, listOf(tagId))
+
+        repository.renameTag(tagId, "New Name")
+
+        val tags = repository.observeDocumentTags(docId).first()
+        assertEquals(1, tags.size)
+        assertEquals("New Name", tags.single().name)
+        assertEquals("workflow HasTag still resolves by id", tagId, tags.single().id)
+    }
+
+    @Test
+    fun `deleting a tag removes it from documents`() = runTest {
+        val docId = repository.createDocument("Doc").getOrThrow()
+        val tagId = repository.createTag("Temp")
+        repository.setDocumentTags(docId, listOf(tagId))
+
+        repository.deleteTags(listOf(tagId))
+
+        assertTrue(repository.observeDocumentTags(docId).first().isEmpty())
+    }
+
+    @Test
+    fun `document tag map emits when a tag is added to a document`() = runTest {
+        val docId = repository.createDocument("Doc").getOrThrow()
+        val tagId = repository.createTag("t")
+        // Wait for the in-memory document list to include the new document.
+        repository.observeDocuments().first { docs -> docs.any { it.id == docId } }
+
+        val latch = java.util.concurrent.CountDownLatch(1)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            repository.observeDocumentTagMap().collect { map ->
+                if (map[docId]?.any { it.id == tagId } == true) latch.countDown()
+            }
+        }
+
+        repository.setDocumentTags(docId, listOf(tagId))
+
+        assertTrue(
+            "map must re-emit with the new tag",
+            latch.await(5, java.util.concurrent.TimeUnit.SECONDS),
+        )
+    }
+
+    @Test
+    fun `a never accessed document falls back to last modified`() = runTest {
+        val docId = repository.createDocument("Doc").getOrThrow()
+        val doc = repository.observeDocuments().first { list -> list.any { it.id == docId } }
+            .first { it.id == docId }
+        assertEquals(doc.updatedAt, doc.lastAccessedAt)
+    }
+
+    @Test
+    fun `markDocumentAccessed sets last seen`() = runTest {
+        val docId = repository.createDocument("Doc").getOrThrow()
+        repository.observeDocuments().first { list -> list.any { it.id == docId } }
+
+        repository.markDocumentAccessed(docId)
+
+        val doc = repository.observeDocuments().first().first { it.id == docId }
+        assertTrue("last seen must be recorded", doc.lastAccessedAt > 0L)
+    }
+
+    @Test
     fun `replacePages preserves keptFilenames order`() = runTest {
         val docId = repository.createDocument("Order test").getOrThrow()
         repository.addPage(docId, tempPageUri())
@@ -318,10 +413,11 @@ class DocumentRepositoryTest {
         val repo = DocumentRepositoryImpl(
             store = DocumentStore(app),
             tagDao = database.tagDao(),
-            tagAutomationDao = database.tagAutomationDao(),
+            eventBus = com.picpocket.app.data.workflow.DocumentEventBus(),
             pdfPageImporter = mockImporter,
             ocrManager = createOcrManager(app),
             app = app,
+            documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
         )
 
         val uri = Uri.parse("content://test/test.pdf")
@@ -339,10 +435,11 @@ class DocumentRepositoryTest {
         val repo = DocumentRepositoryImpl(
             store = DocumentStore(app),
             tagDao = database.tagDao(),
-            tagAutomationDao = database.tagAutomationDao(),
+            eventBus = com.picpocket.app.data.workflow.DocumentEventBus(),
             pdfPageImporter = mockImporter,
             ocrManager = createOcrManager(app),
             app = app,
+            documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
         )
 
         val uri = Uri.parse("content://test/test.pdf")
@@ -374,10 +471,11 @@ class DocumentRepositoryTest {
         val repo = DocumentRepositoryImpl(
             store = DocumentStore(app),
             tagDao = database.tagDao(),
-            tagAutomationDao = database.tagAutomationDao(),
+            eventBus = com.picpocket.app.data.workflow.DocumentEventBus(),
             pdfPageImporter = mockImporter,
             ocrManager = createOcrManager(app),
             app = app,
+            documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
         )
 
         val uri = Uri.parse("content://test/test.pdf")
@@ -427,10 +525,11 @@ class DocumentRepositoryTest {
         val repo = DocumentRepositoryImpl(
             store = DocumentStore(app),
             tagDao = database.tagDao(),
-            tagAutomationDao = database.tagAutomationDao(),
+            eventBus = com.picpocket.app.data.workflow.DocumentEventBus(),
             pdfPageImporter = mockImporter,
             ocrManager = createOcrManager(app),
             app = app,
+            documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
         )
 
         val uri = Uri.parse("content://test/test.pdf")

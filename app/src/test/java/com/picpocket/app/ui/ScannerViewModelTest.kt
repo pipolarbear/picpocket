@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.net.Uri
 import com.picpocket.app.data.FakeDocumentRepository
 import com.picpocket.app.data.store.DocumentStore
-import com.picpocket.app.data.workflow.WorkflowExecutor
 import com.picpocket.app.domain.filter.BinarizeFilter
 import com.picpocket.app.domain.filter.BrightnessFilter
 import com.picpocket.app.domain.filter.ContrastFilter
@@ -56,18 +55,12 @@ class ScannerViewModelTest {
             GrayscaleFilter(), ContrastFilter(), BrightnessFilter(),
             SharpenFilter(), BinarizeFilter(),
         )
-        val executor = WorkflowExecutor(
-            app,
-            repo,
-            FakePdfGenerator(),
-        )
         viewModel = ScannerViewModel(
             app,
             repo,
             com.picpocket.app.domain.scanner.ScannerManager(),
             pipeline,
             ocrManager,
-            executor,
         )
     }
 

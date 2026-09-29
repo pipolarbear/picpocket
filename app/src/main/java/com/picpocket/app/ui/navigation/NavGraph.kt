@@ -17,6 +17,7 @@ import com.picpocket.app.ui.screens.settings.TracingScreen
 import com.picpocket.app.ui.screens.sync.SyncScreen
 import com.picpocket.app.ui.screens.tags.TagManagementScreen
 import com.picpocket.app.ui.screens.viewer.PageViewerScreen
+import com.picpocket.app.ui.screens.workflows.WorkflowsScreen
 
 object Routes {
     const val HOME = "home"
@@ -28,6 +29,7 @@ object Routes {
     const val SYNC = "sync"
     const val DONATE = "donate"
     const val TAGS = "tags"
+    const val WORKFLOWS = "workflows?workflowId={workflowId}"
     const val TRACING = "tracing"
     const val DELETED = "deleted"
     const val PAIRING = "pairing"
@@ -35,6 +37,8 @@ object Routes {
     fun documentDetail(documentId: String) = "document/$documentId"
     fun pageViewer(documentId: String, pageIndex: Int) = "viewer/$documentId/$pageIndex"
     fun appendScanner(documentId: String) = "scanner/$documentId"
+    fun workflows(workflowId: Long? = null) =
+        if (workflowId == null) "workflows" else "workflows?workflowId=$workflowId"
 }
 
 @Composable
@@ -106,6 +110,7 @@ fun PicPocketNavGraph(navController: NavHostController) {
                 onNavigateBack = { navController.popBackStack() },
                 onDonateClick = { navController.navigate(Routes.DONATE) },
                 onTagsClick = { navController.navigate(Routes.TAGS) },
+                onWorkflowsClick = { navController.navigate(Routes.workflows()) },
                 onSyncClick = { navController.navigate(Routes.SYNC) },
                 onTracingClick = { navController.navigate(Routes.TRACING) },
             )
@@ -138,6 +143,22 @@ fun PicPocketNavGraph(navController: NavHostController) {
         composable(Routes.TAGS) {
             TagManagementScreen(
                 onNavigateBack = { navController.popBackStack() },
+                onOpenWorkflow = { workflowId -> navController.navigate(Routes.workflows(workflowId)) },
+            )
+        }
+        composable(
+            route = Routes.WORKFLOWS,
+            arguments = listOf(
+                navArgument("workflowId") {
+                    type = NavType.LongType
+                    defaultValue = -1L
+                },
+            ),
+        ) { backStackEntry ->
+            val workflowId = backStackEntry.arguments?.getLong("workflowId")?.takeIf { it > 0 }
+            WorkflowsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                initialWorkflowId = workflowId,
             )
         }
     }

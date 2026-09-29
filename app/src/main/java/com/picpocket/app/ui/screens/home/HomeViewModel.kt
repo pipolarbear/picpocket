@@ -38,11 +38,15 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 enum class SortOrder(val label: String) {
+    LAST_SEEN_DESC("Last seen"),
     MODIFIED_DESC("Last modified"),
     CREATED_DESC("Created"),
     SIZE_DESC("Size"),
     NAME_ASC("Name"),
 }
+
+private const val KEY_SORT_ORDER = "home_sort_order"
+private const val KEY_SORT_REVERSED = "home_sort_reversed"
 
 data class HomeUiState(
     val documents: List<Document> = emptyList(),
@@ -52,7 +56,8 @@ data class HomeUiState(
     val selectionMode: Boolean = false,
     val selectedDocumentIds: Set<DocumentId> = emptySet(),
     val showDeleteConfirmation: Boolean = false,
-    val sortOrder: SortOrder = SortOrder.MODIFIED_DESC,
+    val sortOrder: SortOrder = SortOrder.LAST_SEEN_DESC,
+    val sortReversed: Boolean = false,
     val showRenameDialog: Boolean = false,
     val renameText: String = "",
     val searchQuery: String = "",
@@ -82,7 +87,8 @@ class HomeViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
-    private val _sortOrder = MutableStateFlow(SortOrder.MODIFIED_DESC)
+    private val _sortOrder = MutableStateFlow(readSortOrder())
+    private val _sortReversed = MutableStateFlow(readSortReversed())
     private val _searchQuery = MutableStateFlow("")
     private val _searchInContent = MutableStateFlow(false)
     private val _ocrMatchIds = MutableStateFlow<Set<DocumentId>>(emptySet())
@@ -134,16 +140,21 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 repository.observeDocuments(),
-                _sortOrder,
+                combine(_sortOrder, _sortReversed) { order, reversed -> order to reversed },
                 _debouncedQuery,
                 _searchInContent,
                 _ocrMatchIds,
-            ) { docs, sortOrder, query, inContent, ocrIds -> listOf(docs, sortOrder, query, inContent, ocrIds) }
+            ) { docs, sort, query, inContent, ocrIds ->
+                listOf(docs, sort, query, inContent, ocrIds)
+            }
             .combine(
                 combine(_filterTagIds, _filterMatchMode, _documentTagMap) { a, b, c -> listOf(a, b, c) }
             ) { main, filter ->
                 val docs = main[0] as List<Document>
-                val sortOrder = main[1] as SortOrder
+                @Suppress("UNCHECKED_CAST")
+                val sort = main[1] as Pair<SortOrder, Boolean>
+                val sortOrder = sort.first
+                val reversed = sort.second
                 val query = main[2] as String
                 val inContent = main[3] as Boolean
                 val ocrIds = main[4] as Set<*>
@@ -173,17 +184,20 @@ class HomeViewModel @Inject constructor(
                     }
                 }
                 val sorted = when (sortOrder) {
+                    SortOrder.LAST_SEEN_DESC -> tagFiltered.sortedByDescending { it.lastAccessedAt }
                     SortOrder.MODIFIED_DESC -> tagFiltered.sortedByDescending { it.updatedAt }
                     SortOrder.CREATED_DESC -> tagFiltered.sortedByDescending { it.createdAt }
                     SortOrder.SIZE_DESC -> tagFiltered.sortedByDescending { it.totalFileSize }
                     SortOrder.NAME_ASC -> tagFiltered.sortedBy { it.name.lowercase() }
                 }
-                sorted to sortOrder
-            }.collect { (sorted, sortOrder) ->
+                val ordered = if (reversed) sorted.reversed() else sorted
+                Triple(ordered, sortOrder, reversed)
+            }.collect { (sorted, sortOrder, reversed) ->
                 _uiState.update { state ->
                     state.copy(
                         documents = sorted,
                         sortOrder = sortOrder,
+                        sortReversed = reversed,
                         isLoading = false,
                         selectedDocumentIds = if (state.selectionMode) {
                             state.selectedDocumentIds.filter { id ->
@@ -209,7 +223,31 @@ class HomeViewModel @Inject constructor(
 
     fun setSortOrder(order: SortOrder) {
         _sortOrder.value = order
+        _uiState.update { it.copy(sortOrder = order) }
+        getApplication<Application>().getSharedPreferences("settings", 0)
+            .edit().putString(KEY_SORT_ORDER, order.name).apply()
     }
+
+    fun toggleSortReversed() {
+        val reversed = !_sortReversed.value
+        _sortReversed.value = reversed
+        _uiState.update { it.copy(sortReversed = reversed) }
+        getApplication<Application>().getSharedPreferences("settings", 0)
+            .edit().putBoolean(KEY_SORT_REVERSED, reversed).apply()
+    }
+
+    private fun readSortOrder(): SortOrder {
+        val stored = getApplication<Application>()
+            .getSharedPreferences("settings", 0)
+            .getString(KEY_SORT_ORDER, null)
+        return stored?.let { name -> SortOrder.entries.find { it.name == name } }
+            ?: SortOrder.LAST_SEEN_DESC
+    }
+
+    private fun readSortReversed(): Boolean =
+        getApplication<Application>()
+            .getSharedPreferences("settings", 0)
+            .getBoolean(KEY_SORT_REVERSED, false)
 
     fun onDocumentLongPress(documentId: DocumentId) {
         _uiState.update {

@@ -12,9 +12,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Tag
-import com.picpocket.app.data.model.TriggerEvent
 import com.picpocket.app.data.repository.DocumentRepository
-import com.picpocket.app.data.workflow.WorkflowExecutor
 import com.picpocket.app.domain.filter.FilterPipeline
 import com.picpocket.app.domain.filter.FilterType
 import com.picpocket.app.domain.ocr.OcrManager
@@ -76,7 +74,6 @@ class ScannerViewModel @Inject constructor(
     private val scannerManager: ScannerManager,
     private val filterPipeline: FilterPipeline,
     private val ocrManager: OcrManager,
-    private val workflowExecutor: WorkflowExecutor,
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(ScannerUiState())
@@ -91,8 +88,6 @@ class ScannerViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         emptyList(),
     )
-
-    private var pagesAddedJob: Job? = null
 
     init {
         val now = LocalDateTime.now()
@@ -263,19 +258,6 @@ class ScannerViewModel @Inject constructor(
         repository.addPage(documentId, captured.imageUri.toString(), fileSizeBytes = 0, qualityTier = tier.ordinal)
 
         _uiState.update { it.copy(appendPageCount = it.appendPageCount + 1) }
-
-        pagesAddedJob?.cancel()
-        pagesAddedJob = viewModelScope.launch {
-            delay(3000)
-            val docTags = repository.observeDocumentTags(documentId).first()
-            val tagIds = docTags.map { it.id }
-            val automations = repository.getAutomationsForTagIds(tagIds)
-                .filter { it.triggerEvent == TriggerEvent.PAGES_ADDED }
-            if (automations.isNotEmpty()) {
-                val scannedDoc = repository.getDocument(documentId).getOrNull() ?: return@launch
-                workflowExecutor.execute(scannedDoc, automations)
-            }
-        }
     }
 
     fun showTagsDialog() {
@@ -351,16 +333,6 @@ class ScannerViewModel @Inject constructor(
         val docId = pendingDocumentId ?: return
         pendingDocumentId = null
         _uiState.update { it.copy(savedDocumentId = docId, showTagsDialog = false, capturedPages = emptyList()) }
-        viewModelScope.launch {
-            val docTags = repository.observeDocumentTags(docId).first()
-            val tagIds = docTags.map { it.id }
-            val automations = repository.getAutomationsForTagIds(tagIds)
-                .filter { it.triggerEvent == TriggerEvent.CREATE }
-            if (automations.isNotEmpty()) {
-                val doc = repository.getDocument(docId).getOrNull() ?: return@launch
-                workflowExecutor.execute(doc, automations)
-            }
-        }
     }
 
     fun confirmOverwrite() {

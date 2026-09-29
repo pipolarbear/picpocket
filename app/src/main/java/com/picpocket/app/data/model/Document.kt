@@ -12,4 +12,6 @@ data class Document(
     val qualityTier: Int = 0,
     val ocrComplete: Boolean = false,
     val pageSize: String? = null,
+    /** Local-only last-opened time; falls back to [updatedAt] when never opened. */
+    val lastAccessedAt: Long = 0,
 )

@@ -1,6 +1,12 @@
 package com.picpocket.app.ui
 
 import com.picpocket.app.data.FakeDocumentRepository
+import com.picpocket.app.data.FakeWorkflowRepository
+import com.picpocket.app.domain.workflow.model.ActionNode
+import com.picpocket.app.domain.workflow.model.ActionType
+import com.picpocket.app.domain.workflow.model.Condition
+import com.picpocket.app.domain.workflow.model.TriggerEvent
+import com.picpocket.app.domain.workflow.model.Workflow
 import com.picpocket.app.ui.screens.tags.TagManagementViewModel
 import com.picpocket.app.util.MainCoroutineRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,12 +28,14 @@ class TagManagementViewModelTest {
     val coroutineRule = MainCoroutineRule()
 
     private lateinit var repo: FakeDocumentRepository
+    private lateinit var workflowRepository: FakeWorkflowRepository
     private lateinit var viewModel: TagManagementViewModel
 
     @Before
     fun setUp() {
         repo = FakeDocumentRepository()
-        viewModel = TagManagementViewModel(repo)
+        workflowRepository = FakeWorkflowRepository()
+        viewModel = TagManagementViewModel(repo, workflowRepository)
     }
 
     @Test
@@ -142,5 +150,59 @@ class TagManagementViewModelTest {
         viewModel.exitSelectionMode()
         assertFalse(viewModel.uiState.value.selectionMode)
         assertTrue(viewModel.uiState.value.selectedTagIds.isEmpty())
+    }
+
+    @Test
+    fun `delete is blocked while a workflow references the tag`() = runTest {
+        val tagId = repo.createTag("Receipts")
+        workflowRepository.save(
+            Workflow(
+                name = "w",
+                triggers = listOf(TriggerEvent.DOC_CREATED),
+                conditions = listOf(Condition.HasTag(tagId)),
+                roots = listOf(ActionNode("a", ActionType.ZIP)),
+            ),
+        )
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.showDeleteConfirmationForTag(tagId)
+        viewModel.confirmDelete()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.showDeleteBlocked)
+        assertEquals("tag must not be removed", 1, viewModel.uiState.value.allTags.size)
+    }
+
+    @Test
+    fun `delete proceeds when no workflow references the tag`() = runTest {
+        val tagId = repo.createTag("Receipts")
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.showDeleteConfirmationForTag(tagId)
+        viewModel.confirmDelete()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.showDeleteBlocked)
+        assertTrue(viewModel.uiState.value.allTags.isEmpty())
+    }
+
+    @Test
+    fun `rename to an existing tag name is refused`() = runTest {
+        repo.createTag("One")
+        repo.createTag("Two")
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        val second = viewModel.uiState.value.allTags.first { it.name == "Two" }
+        viewModel.startEditing(second.id)
+        viewModel.updateEditingName("One")
+        viewModel.saveEdit()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue("a message must be shown", viewModel.uiState.value.message != null)
+        assertEquals(
+            "name must be unchanged",
+            "Two",
+            viewModel.uiState.value.allTags.first { it.id == second.id }.name,
+        )
     }
 }

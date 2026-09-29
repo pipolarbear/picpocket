@@ -394,17 +394,33 @@ def pytest(args: list[str], log_path: Path, verbose: bool, env: dict | None = No
 # ---------------------------------------------------------------------------
 
 def parse_junit_xml(path: Path) -> list[tuple[str, str]]:
-    """Return [(classname, 'pass'|'fail')] from a JUnit XML file."""
+    """Return [(classname, 'pass'|'fail')] per test class.
+
+    AndroidJUnit results are frequently emitted as a single <testsuite> whose
+    testcases come from several classes (the suite name then reflects only one
+    of them). Attribute each result to its testcase's `classname` so the
+    summary names the class that actually failed. A suite that reports failures
+    but contains no testcase (e.g. an initialization error) is attributed to
+    the suite name.
+    """
     try:
-        tree = ElementTree.parse(path)
+        root = ElementTree.parse(path).getroot()
     except (ElementTree.ParseError, FileNotFoundError):
         return []
-    out = []
-    for suite in tree.getroot().iter("testsuite"):
-        name = suite.get("name") or ""
-        failed = int(suite.get("failures", 0) or 0) + int(suite.get("errors", 0) or 0)
-        out.append((name, "fail" if failed > 0 else "pass"))
-    return out
+    statuses: dict[str, str] = {}
+    for suite in root.iter("testsuite"):
+        suite_name = suite.get("name") or ""
+        cases = list(suite.iter("testcase"))
+        for case in cases:
+            name = case.get("classname") or suite_name or case.get("name") or "unknown"
+            failed = case.find("failure") is not None or case.find("error") is not None
+            status = "fail" if failed else "pass"
+            if statuses.get(name) != "fail":
+                statuses[name] = status
+        suite_failed = int(suite.get("failures", 0) or 0) + int(suite.get("errors", 0) or 0) > 0
+        if suite_failed and not cases and suite_name:
+            statuses[suite_name] = "fail"
+    return list(statuses.items())
 
 
 def read_xml_results(xml_dir: Path) -> dict[str, str]:
@@ -685,25 +701,35 @@ def ensure_emulator(mode: str, verbose: bool) -> None:
 
 def scan_unit_classes() -> list[str]:
     """Best-effort scan of app/src/test for test class names."""
-    base = ROOT / "app" / "src" / "test" / "java"
-    classes = []
-    for f in sorted(base.rglob("*Test.kt")):
-        rel = f.relative_to(base)
-        pkg = ".".join(rel.parts[:-1])
-        classes.append(f"{pkg}.{f.stem}")
-    return classes
+    return _scan_test_classes(ROOT / "app" / "src" / "test" / "java")
 
 
 def scan_instrumented_classes() -> list[str]:
     base = ROOT / "app" / "src" / "androidTest" / "java"
+    return [
+        c for c in _scan_test_classes(base)
+        if c not in EXCLUDED_INSTRUMENTED_CLASSES
+    ]
+
+
+_PACKAGE_RE = re.compile(r"^\s*package\s+([\w.]+)", re.MULTILINE)
+
+
+def _scan_test_classes(base: Path) -> list[str]:
+    """Discover *Test classes under `base`, using each file's declared package.
+
+    The directory tree need not mirror the package declaration, so read the
+    actual `package` line; fall back to the directory path only if absent.
+    """
     classes = []
     for f in sorted(base.rglob("*Test.kt")):
-        rel = f.relative_to(base)
-        pkg = ".".join(rel.parts[:-1])
-        name = f"{pkg}.{f.stem}"
-        if name in EXCLUDED_INSTRUMENTED_CLASSES:
-            continue
-        classes.append(name)
+        try:
+            text = f.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            text = ""
+        match = _PACKAGE_RE.search(text)
+        pkg = match.group(1) if match else ".".join(f.relative_to(base).parts[:-1])
+        classes.append(f"{pkg}.{f.stem}")
     return classes
 
 

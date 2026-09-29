@@ -1,11 +1,7 @@
 package com.picpocket.app.data.repository
 
-import com.picpocket.app.data.local.dao.TagAutomationDao
 import com.picpocket.app.data.local.dao.TagDao
-import com.picpocket.app.data.local.entity.TagAutomationEntity
 import com.picpocket.app.data.local.entity.TagEntity
-import com.picpocket.app.data.local.entity.toDomain
-import com.picpocket.app.data.local.entity.toEntity
 import android.app.Application
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -13,9 +9,12 @@ import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
 import com.picpocket.app.data.model.Tag
-import com.picpocket.app.data.model.TagAutomation
+import com.picpocket.app.data.store.DocumentAccessStore
 import com.picpocket.app.data.store.DocumentStore
 import com.picpocket.app.data.store.StoredDocument
+import com.picpocket.app.data.workflow.DocumentEvent
+import com.picpocket.app.data.workflow.DocumentEventBus
+import com.picpocket.app.domain.workflow.model.TriggerEvent
 import com.picpocket.app.domain.pdfimport.PdfPageImporter
 import com.picpocket.app.domain.ocr.OcrManager
 import com.picpocket.app.domain.scan.PageEncoder
@@ -28,6 +27,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -39,15 +39,20 @@ import javax.inject.Singleton
 class DocumentRepositoryImpl @Inject constructor(
     private val store: DocumentStore,
     private val tagDao: TagDao,
-    private val tagAutomationDao: TagAutomationDao,
     private val pdfPageImporter: PdfPageImporter,
     private val ocrManager: OcrManager,
     private val app: Application,
+    private val eventBus: DocumentEventBus,
+    private val documentAccess: DocumentAccessStore,
 ) : DocumentRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _documents = MutableStateFlow<List<Document>>(emptyList())
     private val _tagChangeNotifier = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
+
+    private fun emit(event: TriggerEvent, documentId: String) {
+        eventBus.emit(DocumentEvent(event, documentId))
+    }
 
     init {
         scope.launch { refreshDocuments() }
@@ -62,7 +67,9 @@ class DocumentRepositoryImpl @Inject constructor(
 
     override fun observeDocuments(): Flow<List<Document>> {
         scope.launch { refreshDocuments() }
-        return _documents.asStateFlow()
+        return combine(_documents.asStateFlow(), documentAccess.timestamps) { docs, access ->
+            docs.map { it.copy(lastAccessedAt = access[it.id] ?: it.updatedAt) }
+        }
     }
 
     override fun observeDocument(documentId: DocumentId): Flow<Document?> {
@@ -70,7 +77,7 @@ class DocumentRepositoryImpl @Inject constructor(
             _documents.asStateFlow().map { Unit },
             ocrManager.metadataChanged,
         ).map {
-            store.readMetadata(documentId).getOrNull()?.toDomain()
+            store.readMetadata(documentId).getOrNull()?.toDomain()?.withAccess()
         }
     }
 
@@ -96,7 +103,7 @@ class DocumentRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getDocument(documentId: DocumentId): Result<Document> {
-        return store.readMetadata(documentId).map { it.toDomain() }
+        return store.readMetadata(documentId).map { it.toDomain().withAccess() }
     }
 
     override suspend fun getPages(documentId: DocumentId): Result<List<Page>> {
@@ -119,6 +126,7 @@ class DocumentRepositoryImpl @Inject constructor(
     override suspend fun createDocument(name: String, qualityTier: Int, pageSize: String?): Result<DocumentId> {
         return store.createDocument(name = name, qualityTier = qualityTier, pageSize = pageSize).map { stored ->
             scope.launch { refreshDocuments() }
+            emit(TriggerEvent.DOC_CREATED, stored.id)
             stored.id
         }
     }
@@ -147,6 +155,7 @@ class DocumentRepositoryImpl @Inject constructor(
                 filterTypeOrdinal = filterTypeOrdinal,
             ).getOrThrow()
             scope.launch { refreshDocuments() }
+            emit(TriggerEvent.PAGES_ADDED, documentId)
         }
     }
 
@@ -157,44 +166,60 @@ class DocumentRepositoryImpl @Inject constructor(
     override suspend fun updateDocumentName(documentId: DocumentId, name: String): Result<Unit> {
         return store.updateDocumentName(documentId, name).onSuccess {
             scope.launch { refreshDocuments() }
+            emit(TriggerEvent.RENAMED, documentId)
         }
     }
 
     override suspend fun getDocumentsByName(name: String): Result<List<Document>> {
         return store.listDocuments().map { stored ->
             stored.filter { it.name.equals(name, ignoreCase = true) }
-                .map { it.toDomain() }
+                .map { it.toDomain().withAccess() }
         }
     }
 
     override suspend fun getAllDocuments(): Result<List<Document>> {
-        return store.listDocuments().map { stored -> stored.map { it.toDomain() } }
+        return store.listDocuments().map { stored -> stored.map { it.toDomain().withAccess() } }
     }
 
     override suspend fun deleteDocumentsByName(name: String): Result<Unit> {
         return store.listDocuments().mapCatching { stored ->
             val docs = stored.filter { it.name.equals(name, ignoreCase = true) }
-            for (doc in docs) store.deleteDocument(doc.id).getOrThrow()
+            documentAccess.remove(docs.map { it.id })
+            for (doc in docs) {
+                store.deleteDocument(doc.id).getOrThrow()
+                emit(TriggerEvent.DELETED, doc.id)
+            }
             scope.launch { refreshDocuments() }
         }
     }
 
     override suspend fun deleteDocuments(documentIds: List<DocumentId>): Result<Unit> {
         return runCatching {
-            for (id in documentIds) store.deleteDocument(id).getOrThrow()
+            documentAccess.remove(documentIds)
+            for (id in documentIds) {
+                store.deleteDocument(id).getOrThrow()
+                emit(TriggerEvent.DELETED, id)
+            }
             scope.launch { refreshDocuments() }
         }
     }
 
     override suspend fun deleteDocument(documentId: DocumentId): Result<Unit> {
         return store.deleteDocument(documentId).onSuccess {
+            documentAccess.remove(listOf(documentId))
             scope.launch { refreshDocuments() }
+            emit(TriggerEvent.DELETED, documentId)
         }
+    }
+
+    override suspend fun markDocumentAccessed(documentId: DocumentId) {
+        documentAccess.touch(documentId)
     }
 
     override suspend fun deletePage(documentId: DocumentId, pageNumber: Int): Result<Unit> {
         return store.removePage(documentId, pageNumber).onSuccess {
             scope.launch { refreshDocuments() }
+            emit(TriggerEvent.PAGE_REMOVED, documentId)
         }
     }
 
@@ -205,12 +230,14 @@ class DocumentRepositoryImpl @Inject constructor(
                 if (file.exists()) file.delete()
             }
             scope.launch { refreshDocuments() }
+            emit(TriggerEvent.PAGE_REMOVED, documentId)
         }
     }
 
     override suspend fun reorderPages(documentId: DocumentId, pageNumbers: List<Int>): Result<Unit> {
         return store.reorderPages(documentId, pageNumbers).onSuccess {
             scope.launch { refreshDocuments() }
+            emit(TriggerEvent.PAGES_REORDERED, documentId)
         }
     }
 
@@ -290,6 +317,7 @@ class DocumentRepositoryImpl @Inject constructor(
 
             scope.launch { refreshDocuments() }
             scope.launch { ocrManager.runOcr(documentId) }
+            emit(TriggerEvent.PAGE_RESCANNED, documentId)
         }
     }
 
@@ -342,17 +370,24 @@ class DocumentRepositoryImpl @Inject constructor(
     }
 
     override fun observeDocumentTagMap(): Flow<Map<DocumentId, List<Tag>>> {
-        return _documents.asStateFlow().map { docs ->
+        // React to the document list, tag set/unset on documents, and changes to
+        // the tag table (create/rename/delete) — documents carry tag names, and
+        // `_documents` does not change when only tags change.
+        return merge(
+            _documents.asStateFlow().map { Unit },
+            _tagChangeNotifier.asSharedFlow(),
+            observeAllTags().map { Unit },
+        ).map {
+            val docs = _documents.value
             val allTagEntities = tagDao.getAll()
-            val allTags = docs.mapNotNull { doc ->
+            docs.mapNotNull { doc ->
                 val stored = store.readMetadata(doc.id).getOrNull() ?: return@mapNotNull null
                 val tagNames = stored.tags
                 if (tagNames.isEmpty()) return@mapNotNull null
                 doc.id to tagNames.mapNotNull { name ->
                     allTagEntities.find { it.name.equals(name, ignoreCase = true) }?.toDomain()
                 }
-            }
-            allTags.toMap()
+            }.toMap()
         }
     }
 
@@ -366,39 +401,57 @@ class DocumentRepositoryImpl @Inject constructor(
     }
 
     override suspend fun renameTag(tagId: Long, name: String) {
+        val old = tagDao.getByIds(listOf(tagId)).firstOrNull()?.name ?: return
+        if (name.isBlank() || name.equals(old, ignoreCase = true)) return
         tagDao.update(TagEntity(id = tagId, name = name))
+        rewriteDocumentTagName(old, name)
+        _tagChangeNotifier.emit(Unit)
+        scope.launch { refreshDocuments() }
+    }
+
+    /** Documents reference tags by name; a rename must follow every reference. */
+    private suspend fun rewriteDocumentTagName(old: String, new: String) {
+        store.listDocuments().getOrNull().orEmpty().forEach { doc ->
+            if (doc.tags.none { it.equals(old, ignoreCase = true) }) return@forEach
+            val tags = doc.tags
+                .map { if (it.equals(old, ignoreCase = true)) new else it }
+                .distinct()
+            store.writeMetadata(doc.id, doc.copy(tags = tags))
+        }
     }
 
     override suspend fun deleteTags(tagIds: List<Long>) {
+        val names = tagDao.getByIds(tagIds).map { it.name }
         tagDao.deleteByIds(tagIds)
+        removeDocumentTagNames(names)
+        _tagChangeNotifier.emit(Unit)
+        scope.launch { refreshDocuments() }
+    }
+
+    private suspend fun removeDocumentTagNames(names: List<String>) {
+        if (names.isEmpty()) return
+        val lowered = names.map { it.lowercase() }.toSet()
+        store.listDocuments().getOrNull().orEmpty().forEach { doc ->
+            if (doc.tags.none { it.lowercase() in lowered }) return@forEach
+            val tags = doc.tags.filterNot { it.lowercase() in lowered }
+            store.writeMetadata(doc.id, doc.copy(tags = tags))
+        }
     }
 
     override suspend fun setDocumentTags(documentId: DocumentId, tagIds: List<Long>) {
         val tags = tagDao.getByIds(tagIds)
         val tagNames = tags.map { it.name }
         val doc = store.readMetadata(documentId).getOrNull() ?: return
+        val previous = doc.tags.toSet()
         store.writeMetadata(documentId, doc.copy(tags = tagNames))
         _tagChangeNotifier.emit(Unit)
         scope.launch { refreshDocuments() }
+        if (tagNames.any { it !in previous }) emit(TriggerEvent.TAGGED, documentId)
+        if (previous.any { it !in tagNames }) emit(TriggerEvent.UNTAGGED, documentId)
     }
 
-    override fun observeTagAutomations(tagId: Long): Flow<List<TagAutomation>> {
-        return tagAutomationDao.observeByTagId(tagId).map { entities ->
-            entities.map { it.toDomain() }
-        }
-    }
-
-    override suspend fun getAutomationsForTagIds(tagIds: List<Long>): List<TagAutomation> {
-        return tagAutomationDao.getByTagIds(tagIds).map { it.toDomain() }
-    }
-
-    override suspend fun createAutomation(automation: TagAutomation): Long {
-        return tagAutomationDao.insert(automation.toEntity())
-    }
-
-    override suspend fun deleteAutomation(id: Long) {
-        tagAutomationDao.deleteById(id)
-    }
+    private fun Document.withAccess(): Document =
+        copy(lastAccessedAt = documentAccess.snapshot()[id] ?: updatedAt)
 
     private fun StoredDocument.toDomain(): Document {
         return Document(

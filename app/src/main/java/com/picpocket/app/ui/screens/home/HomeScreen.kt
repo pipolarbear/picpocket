@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TabUnselected
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -46,6 +48,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -182,7 +185,11 @@ fun HomeScreen(
                     } else {
                         Box {
                             IconButton(onClick = { showSortMenu = true }) {
-                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
+                                Icon(
+                                    if (state.sortReversed) Icons.Default.SwapVert
+                                    else Icons.AutoMirrored.Filled.Sort,
+                                    contentDescription = "Sort",
+                                )
                             }
                             DropdownMenu(
                                 expanded = showSortMenu,
@@ -205,6 +212,28 @@ fun HomeScreen(
                                         },
                                     )
                                 }
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "Reverse order",
+                                            color = if (state.sortReversed)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.SwapVert, contentDescription = null)
+                                    },
+                                    trailingIcon = if (state.sortReversed) {
+                                        { Icon(Icons.Default.Check, contentDescription = null) }
+                                    } else null,
+                                    onClick = {
+                                        viewModel.toggleSortReversed()
+                                        showSortMenu = false
+                                    },
+                                )
                             }
                         }
                         if (state.filterTagIds.isNotEmpty()) {
