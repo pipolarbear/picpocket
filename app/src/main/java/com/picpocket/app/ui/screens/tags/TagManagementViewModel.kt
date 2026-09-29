@@ -3,12 +3,12 @@ package com.picpocket.app.ui.screens.tags
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.picpocket.app.data.model.Tag
-import com.picpocket.app.data.model.TagAutomation
 import com.picpocket.app.data.repository.DocumentRepository
+import com.picpocket.app.data.repository.WorkflowRepository
+import com.picpocket.app.domain.workflow.model.Workflow
 import com.picpocket.app.util.fuzzyMatch
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,18 +28,19 @@ data class TagManagementUiState(
     val showCreateDialog: Boolean = false,
     val showDeleteConfirmation: Boolean = false,
     val pendingDeleteTagId: Long? = null,
+    val allWorkflows: List<Workflow> = emptyList(),
+    val pendingDeleteTagIds: Set<Long> = emptySet(),
+    val showDeleteBlocked: Boolean = false,
     val editingTagId: Long? = null,
     val editingTagName: String = "",
-    val detailSheetTagId: Long? = null,
-    val detailSheetTag: Tag? = null,
-    val detailSheetAutomations: List<TagAutomation> = emptyList(),
-    val showWorkflowConfig: Boolean = false,
+    val message: String? = null,
 )
 
 @HiltViewModel
 @OptIn(FlowPreview::class)
 class TagManagementViewModel @Inject constructor(
     private val repository: DocumentRepository,
+    private val workflowRepository: WorkflowRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TagManagementUiState())
@@ -68,6 +69,24 @@ class TagManagementViewModel @Inject constructor(
                 }
             }
         }
+        // Workflows are read here only to know which tags are in use; the
+        // Workflows screen owns editing them.
+        viewModelScope.launch {
+            workflowRepository.observeWorkflows().collect { workflows ->
+                _uiState.update { state ->
+                    val stillBlocked = state.pendingDeleteTagIds.any { id ->
+                        workflows.any { it.referencesTag(id) }
+                    }
+                    val wasBlocked = state.showDeleteBlocked
+                    state.copy(
+                        allWorkflows = workflows,
+                        showDeleteBlocked = wasBlocked && stillBlocked,
+                        showDeleteConfirmation =
+                            if (wasBlocked && !stillBlocked) true else state.showDeleteConfirmation,
+                    )
+                }
+            }
+        }
     }
 
     fun setSearchQuery(query: String) {
@@ -75,13 +94,9 @@ class TagManagementViewModel @Inject constructor(
         _uiState.update { it.copy(searchQuery = query) }
     }
 
-    fun showCreateDialog() {
-        _uiState.update { it.copy(showCreateDialog = true) }
-    }
+    fun showCreateDialog() = _uiState.update { it.copy(showCreateDialog = true) }
 
-    fun hideCreateDialog() {
-        _uiState.update { it.copy(showCreateDialog = false) }
-    }
+    fun hideCreateDialog() = _uiState.update { it.copy(showCreateDialog = false) }
 
     fun createTag(name: String) {
         if (name.isBlank()) return
@@ -93,37 +108,35 @@ class TagManagementViewModel @Inject constructor(
 
     fun startEditing(tagId: Long) {
         val tag = _uiState.value.allTags.find { it.id == tagId } ?: return
-        _uiState.update { it.copy(editingTagId = tagId, editingTagName = tag.name) }
+        _uiState.update { it.copy(editingTagId = tagId, editingTagName = tag.name, message = null) }
     }
 
-    fun updateEditingName(name: String) {
-        _uiState.update { it.copy(editingTagName = name) }
-    }
+    fun updateEditingName(name: String) = _uiState.update { it.copy(editingTagName = name) }
 
     fun saveEdit() {
-        val tagId = _uiState.value.editingTagId ?: return
-        val name = _uiState.value.editingTagName.trim()
+        val state = _uiState.value
+        val tagId = state.editingTagId ?: return
+        val name = state.editingTagName.trim()
         if (name.isBlank()) {
             cancelEdit()
             return
         }
+        if (state.allTags.any { it.id != tagId && it.name.equals(name, ignoreCase = true) }) {
+            _uiState.update { it.copy(message = "A tag named \"$name\" already exists") }
+            return
+        }
         viewModelScope.launch {
             repository.renameTag(tagId, name)
-            cancelEdit()
+            _uiState.update { it.copy(editingTagId = null, editingTagName = "", message = null) }
         }
     }
 
-    fun cancelEdit() {
-        _uiState.update { it.copy(editingTagId = null, editingTagName = "") }
-    }
+    fun cancelEdit() = _uiState.update { it.copy(editingTagId = null, editingTagName = "", message = null) }
+
+    fun consumeMessage() = _uiState.update { it.copy(message = null) }
 
     fun enterSelectionMode(tagId: Long) {
-        _uiState.update {
-            it.copy(
-                selectionMode = true,
-                selectedTagIds = setOf(tagId),
-            )
-        }
+        _uiState.update { it.copy(selectionMode = true, selectedTagIds = setOf(tagId)) }
     }
 
     fun toggleSelection(tagId: Long) {
@@ -133,37 +146,48 @@ class TagManagementViewModel @Inject constructor(
             } else {
                 state.selectedTagIds + tagId
             }
-            state.copy(
-                selectedTagIds = newSelection,
-                selectionMode = newSelection.isNotEmpty(),
-            )
+            state.copy(selectedTagIds = newSelection, selectionMode = newSelection.isNotEmpty())
         }
     }
 
-    fun exitSelectionMode() {
-        _uiState.update {
-            it.copy(selectionMode = false, selectedTagIds = emptySet())
-        }
-    }
+    fun exitSelectionMode() = _uiState.update { it.copy(selectionMode = false, selectedTagIds = emptySet()) }
 
-    fun showDeleteConfirmation() {
-        _uiState.update { it.copy(showDeleteConfirmation = true) }
-    }
+    fun showDeleteConfirmation() = _uiState.update { it.copy(showDeleteConfirmation = true) }
 
-    fun showDeleteConfirmationForTag(tagId: Long) {
+    fun showDeleteConfirmationForTag(tagId: Long) =
         _uiState.update { it.copy(showDeleteConfirmation = true, pendingDeleteTagId = tagId) }
+
+    fun hideDeleteConfirmation() = _uiState.update {
+        it.copy(
+            showDeleteConfirmation = false,
+            pendingDeleteTagId = null,
+            pendingDeleteTagIds = emptySet(),
+        )
     }
 
-    fun hideDeleteConfirmation() {
-        _uiState.update { it.copy(showDeleteConfirmation = false, pendingDeleteTagId = null) }
+    /** Workflows that reference any of the tags queued for deletion. */
+    fun blockingWorkflows(): List<Workflow> {
+        val ids = _uiState.value.pendingDeleteTagIds
+        return _uiState.value.allWorkflows.filter { wf -> ids.any { wf.referencesTag(it) } }
     }
 
     fun confirmDelete() {
-        val tagId = _uiState.value.pendingDeleteTagId
-        val ids = if (tagId != null) listOf(tagId)
-            else _uiState.value.selectedTagIds.toList()
+        val state = _uiState.value
+        val tagId = state.pendingDeleteTagId
+        val ids = if (tagId != null) listOf(tagId) else state.selectedTagIds.toList()
         if (ids.isEmpty()) {
             hideDeleteConfirmation()
+            return
+        }
+        val blocking = state.allWorkflows.filter { wf -> ids.any { wf.referencesTag(it) } }
+        if (blocking.isNotEmpty()) {
+            _uiState.update {
+                it.copy(
+                    showDeleteConfirmation = false,
+                    showDeleteBlocked = true,
+                    pendingDeleteTagIds = ids.toSet(),
+                )
+            }
             return
         }
         viewModelScope.launch {
@@ -177,49 +201,7 @@ class TagManagementViewModel @Inject constructor(
         }
     }
 
-    fun showDetailSheet(tagId: Long) {
-        val tag = _uiState.value.allTags.find { it.id == tagId } ?: return
-        _uiState.update { it.copy(detailSheetTagId = tagId, detailSheetTag = tag) }
-        viewModelScope.launch {
-            repository.observeTagAutomations(tagId).collect { automations ->
-                val current = _uiState.value
-                if (current.detailSheetTagId == tagId) {
-                    _uiState.update { it.copy(detailSheetAutomations = automations) }
-                }
-            }
-        }
-    }
-
-    fun hideDetailSheet() {
-        _uiState.update { it.copy(detailSheetTagId = null, detailSheetTag = null, detailSheetAutomations = emptyList()) }
-    }
-
-    fun renameDetailTag(name: String) {
-        val tagId = _uiState.value.detailSheetTagId ?: return
-        if (name.isBlank()) return
-        viewModelScope.launch {
-            repository.renameTag(tagId, name)
-        }
-    }
-
-    fun showWorkflowConfig() {
-        _uiState.update { it.copy(showWorkflowConfig = true) }
-    }
-
-    fun hideWorkflowConfig() {
-        _uiState.update { it.copy(showWorkflowConfig = false) }
-    }
-
-    fun createWorkflow(automation: TagAutomation) {
-        viewModelScope.launch {
-            repository.createAutomation(automation)
-            hideWorkflowConfig()
-        }
-    }
-
-    fun deleteWorkflow(id: Long) {
-        viewModelScope.launch {
-            repository.deleteAutomation(id)
-        }
+    fun hideDeleteBlocked() = _uiState.update {
+        it.copy(showDeleteBlocked = false, pendingDeleteTagIds = emptySet())
     }
 }

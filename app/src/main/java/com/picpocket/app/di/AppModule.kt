@@ -3,7 +3,6 @@ package com.picpocket.app.di
 import android.content.Context
 import androidx.room.Room
 import com.picpocket.app.data.local.PicPocketDatabase
-import com.picpocket.app.data.local.dao.TagAutomationDao
 import com.picpocket.app.data.local.dao.TagDao
 import com.picpocket.app.data.repository.DocumentRepository
 import com.picpocket.app.data.repository.DocumentRepositoryImpl
@@ -50,9 +49,6 @@ object AppModule {
 
     @Provides
     fun provideTagDao(database: PicPocketDatabase): TagDao = database.tagDao()
-
-    @Provides
-    fun provideTagAutomationDao(database: PicPocketDatabase): TagAutomationDao = database.tagAutomationDao()
 
     @Provides
     @Singleton

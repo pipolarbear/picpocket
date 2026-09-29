@@ -12,14 +12,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -38,10 +36,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,14 +62,23 @@ import com.picpocket.app.ui.theme.TagColors
 @Composable
 fun TagManagementScreen(
     onNavigateBack: () -> Unit,
+    onOpenWorkflow: (Long?) -> Unit = {},
     viewModel: TagManagementViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.message) {
+        state.message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.consumeMessage()
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Manage Tags") },
+                title = { Text("Tags") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -88,6 +98,7 @@ fun TagManagementScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (!state.selectionMode) {
                 FloatingActionButton(onClick = { viewModel.showCreateDialog() }) {
@@ -143,24 +154,33 @@ fun TagManagementScreen(
                     ),
                 ) {
                     items(state.allTags, key = { it.id }) { tag ->
-                        TagRow(
-                            tag = tag,
-                            isSelected = tag.id in state.selectedTagIds,
-                            selectionMode = state.selectionMode,
-                            onClick = {
-                                if (state.selectionMode) {
-                                    viewModel.toggleSelection(tag.id)
-                                } else {
-                                    viewModel.showDetailSheet(tag.id)
-                                }
-                            },
-                            onLongClick = {
-                                if (!state.selectionMode) {
-                                    viewModel.enterSelectionMode(tag.id)
-                                }
-                            },
-                            onDelete = { viewModel.showDeleteConfirmationForTag(tag.id) },
-                        )
+                        if (tag.id == state.editingTagId) {
+                            EditingTagRow(
+                                name = state.editingTagName,
+                                onNameChange = viewModel::updateEditingName,
+                                onSave = viewModel::saveEdit,
+                                onCancel = viewModel::cancelEdit,
+                            )
+                        } else {
+                            TagRow(
+                                tag = tag,
+                                isSelected = tag.id in state.selectedTagIds,
+                                selectionMode = state.selectionMode,
+                                onClick = {
+                                    if (state.selectionMode) {
+                                        viewModel.toggleSelection(tag.id)
+                                    } else {
+                                        viewModel.startEditing(tag.id)
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!state.selectionMode) {
+                                        viewModel.enterSelectionMode(tag.id)
+                                    }
+                                },
+                                onDelete = { viewModel.showDeleteConfirmationForTag(tag.id) },
+                            )
+                        }
                     }
                 }
             }
@@ -180,6 +200,34 @@ fun TagManagementScreen(
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.hideDeleteConfirmation() }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (state.showDeleteBlocked) {
+        val blocking = viewModel.blockingWorkflows()
+        AlertDialog(
+            onDismissRequest = { viewModel.hideDeleteBlocked() },
+            title = { Text("Tag is in use") },
+            text = {
+                Column {
+                    Text(
+                        "This tag is used by the workflows below. Update or remove them, then try again.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    blocking.forEach { workflow ->
+                        TextButton(onClick = { onOpenWorkflow(workflow.id) }) {
+                            Text(workflow.name.ifBlank { "Untitled" })
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onOpenWorkflow(null) }) { Text("Open Workflows") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.hideDeleteBlocked() }) { Text("Close") }
             },
         )
     }
@@ -208,29 +256,6 @@ fun TagManagementScreen(
                 TextButton(onClick = { viewModel.hideCreateDialog() }) { Text("Cancel") }
             },
         )
-    }
-
-    val sheetTag = state.detailSheetTag
-    if (sheetTag != null) {
-        TagDetailSheet(
-            tag = sheetTag,
-            automations = state.detailSheetAutomations,
-            onRename = { viewModel.renameDetailTag(it) },
-            onDeleteAutomation = { viewModel.deleteWorkflow(it) },
-            onAddWorkflow = { viewModel.showWorkflowConfig() },
-            onDismiss = { viewModel.hideDetailSheet() },
-        )
-    }
-
-    if (state.showWorkflowConfig) {
-        val wfTagId = state.detailSheetTagId
-        if (wfTagId != null) {
-            WorkflowConfigSheet(
-                tagId = wfTagId,
-                onSave = { viewModel.createWorkflow(it) },
-                onDismiss = { viewModel.hideWorkflowConfig() },
-            )
-        }
     }
 }
 

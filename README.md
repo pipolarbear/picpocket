@@ -3,27 +3,64 @@
 # PicPocket
 
 [![Android](https://img.shields.io/badge/Android-26%2B-3DDC84?logo=android)](https://developer.android.com/about/versions/oreo)
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-7F52FF?logo=kotlin)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-7F52FF?logo=kotlin)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-BOM%202024.02.00-4285F4?logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
 [![ML Kit](https://img.shields.io/badge/ML%20Kit-Document%20Scanner%20%2B%20OCR-4285F4?logo=google)](https://developers.google.com/ml-kit)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A document scanner for Android that auto-detects document bounds, captures multi-page documents, performs on-device OCR, and saves as searchable PDFs.
+PicPocket is a local-first document scanner and organizer for Android: capture multi-page documents with automatic edge detection and perspective correction, organize them with tags, full-text OCR search, and searchable PDFs, and keep them under your control — stored on your device and synced (optionally encrypted) to Google Drive, Nextcloud, or anything that exposes Android's Storage Access Framework. Workflows add advanced automation.
 
 ## Features
 
 - **Auto-capture** — ML Kit Document Scanner API detects document boundaries and captures with perspective correction
-- **Multi-page documents** — Scan multiple pages, preview, reorder, and save as a single PDF
+- **Multi-page documents** — Scan multiple pages, preview, reorder, and export them as a single PDF
 - **On-device OCR** — ML Kit Text Recognition extracts text offline; no data leaves the device
 - **Searchable PDFs** — Invisible text layer embedded in generated PDFs so you can search document content
 - **Image filters** — Grayscale, brightness, contrast, sharpen, and binarize per page
 - **Drag-and-drop reorder** — Rearrange pages in edit mode
 - **Full-screen viewer** — Swipe between pages, pinch-to-zoom, double-tap to reset
 - **Search documents** — Regex search across document names and OCR content with debounce
-- **Document tagging** — Color-coded tags with Gmail-style autocomplete; manage tags individually or batch on multiple documents via multi-select
-- **Dark mode** — System/Light/Dark with 4 color palettes (Royal, Blue, Teal, Green)
+- **Document tagging** — Color-coded tags with search-and-create tag selection; manage tags individually or batch on multiple documents via multi-select
+- **Dark mode** — System/Light/Dark with 4 color palettes (Royal, Default, Ocean, Forest)
 - **Page size selection** — A0–A6, Letter, Legal, Tabloid
 - **SAF save location** — User picks where to save via Storage Access Framework; no storage permissions needed
+- **Import PDFs** — Import existing PDFs into the library as documents
+- **Page editing** — Append pages to a document, delete a single page, or rescan a page to replace its image
+- **Export & share** — Export to PDF (A0–A6, Letter, Legal, Tabloid; selectable quality); export with a searchable text layer when OCR is on; share or save via SAF
+- **Sync anywhere** — Point PicPocket at any Storage Access Framework folder (Google Drive, Nextcloud, …) and sync across devices that share it, with conflict handling
+- **Optional encryption** — Enable a passphrase and synced files are encrypted before they leave the device; change or disable it any time
+- **Workflows** — Automate document actions (encrypt, zip, save to folder, send to an app, notify, delete) when events happen (created, pages added, renamed, tagged, …), with run history
+- **Sorting** — Last seen (default), modified, created, size, or name, with a reverse toggle
+- **App lock** — Optional biometric unlock for the app
+- **Privacy by default** — Documents stay on your device; no account required; OCR runs fully on-device
+
+## Sync & encryption
+
+PicPocket keeps your documents on your device and, if you want, syncs them
+through a folder you choose with Android's Storage Access Framework — **Google
+Drive, Nextcloud, or any app that exposes a document provider**. Point your
+devices at the same folder and they stay in sync; PicPocket reconciles changes
+and tracks deletions so they propagate to the other devices.
+
+Sync is optional. When you enable **encryption** with a passphrase, files are
+encrypted before they are uploaded, so the provider only ever sees ciphertext,
+and you can change or disable the passphrase later. (This is separate from the
+per-file password a workflow's `encrypt` action can apply.)
+
+## Workflows
+
+Workflows automate document handling: **when** a document event happens, **if**
+its conditions hold, **then** a tree of actions runs. Actions include encrypt
+(with a passphrase), zip, save to a folder, send to an app, notify, and delete
+the document; conditions cover tags, page count, document name, and OCR text.
+You can also run a workflow on demand and review its history.
+
+## Privacy
+
+There is no PicPocket account and no analytics. Documents, their metadata, and
+OCR results live on the device, and OCR is performed locally with ML Kit. Where
+your data goes is your choice: keep it on-device, save copies with the Storage
+Access Framework, or sync it to a provider you trust — encrypted if you want.
 
 ## Requirements
 
@@ -34,7 +71,7 @@ A document scanner for Android that auto-detects document bounds, captures multi
 
 ```bash
 # Clone
-git clone https://github.com/perplexedpigmy/picpocket.git
+git clone https://github.com/pipolarbear/picpocket.git
 cd picpocket
 
 # Create local.properties
@@ -51,9 +88,26 @@ The project uses the standard Android Gradle plugin. No special setup is require
 
 ```bash
 ./gradlew assembleDebug          # Build debug APK
-./gradlew testDebug              # Run unit tests (292+ tests)
+./gradlew testDebugUnitTest      # Run the JVM unit tests (Robolectric)
 ./gradlew assembleRelease        # Build release APK (requires signing config)
 ```
+
+### Testing
+
+All test tiers run through one runner, `scripts/test_runner.py`, which handles
+dependencies (instrumented tests need the emulator booted; scenarios need the
+storage stack) plus progress and ETA. If [`just`](https://github.com/casey/just)
+is installed, the recipes in `.justfile` wrap it:
+
+```bash
+just unit-test                   # JVM unit tests
+just android-test                # Instrumented (Compose) tests on the emulator
+just test                        # Every tier in dependency order
+python scripts/test_runner.py --help
+```
+
+Useful flags: `--group unit|instrumented|infra|saf|scenario`, `--name <pattern>`,
+and `--failed` to rerun only what failed last time.
 
 ## Project Structure
 
@@ -63,26 +117,31 @@ app/
 │   ├── main/
 │   │   ├── java/com/picpocket/app/
 │   │   │   ├── data/
-│   │   │   │   ├── local/       — Room database, DAOs, entities (documents, pages, tags)
-│   │   │   │   └── repository/  — DocumentRepository implementation
+│   │   │   │   ├── local/       — Room database (tags, workflows, runs) + DAOs
+│   │   │   │   ├── store/       — File-based document store (versioned metadata + page images)
+│   │   │   │   ├── repository/  — DocumentRepository, WorkflowRepository
+│   │   │   │   └── workflow/    — DocumentEvent bus + trigger registry
 │   │   │   ├── domain/
-│   │   │   │   └── pdf/         — PdfGenerator, PageSize, OCR logic
+│   │   │   │   ├── scan/        — Quality tiers, page encoding
+│   │   │   │   ├── scanner/     — ML Kit Document Scanner wrapper
+│   │   │   │   ├── ocr/         — ML Kit text recognition
+│   │   │   │   ├── filter/      — Per-page image filters
+│   │   │   │   ├── export/      — PDF generation, page sizes
+│   │   │   │   ├── pdfimport/   — Import external PDFs
+│   │   │   │   ├── storage/     — SAF folder access
+│   │   │   │   └── workflow/    — Engine, actions, conditions, artifact crypto
+│   │   │   ├── drive/sync/      — Sync engine (device registry, upload/download, mutex, worker)
 │   │   │   ├── ui/
-│   │   │   │   ├── screens/
-│   │   │   │   │   ├── home/    — Document list with search, multi-select tagging
-│   │   │   │   │   ├── scanner/ — Camera + capture workflow, tag during creation
-│   │   │   │   │   ├── detail/  — Page grid, reorder, delete, tag management
-│   │   │   │   │   ├── viewer/  — Full-screen zoomable viewer
-│   │   │   │   │   ├── tags/    — Tag management (create, rename, delete)
-│   │   │   │   │   └── settings/— Theme, PDF options, storage, tags entry
+│   │   │   │   ├── screens/     — home, scanner, detail, viewer, tags, workflows, sync, settings, …
+│   │   │   │   ├── components/  — Reusable composables (tag selector, share sheet)
 │   │   │   │   └── theme/       — Material3 theming, palettes
-│   │   │   ├── components/      — Reusable composables (tag selector, etc.)
 │   │   │   ├── navigation/      — NavGraph
-│   │   │   └── di/              — Hilt dependency injection
+│   │   │   └── di/              — Hilt modules
 │   │   └── res/
-│   │       ├── drawable/        — App icon (adaptive vector)
-│   │       └── ...
-│   └── test/                    — JVM unit tests (Robolectric)
+│   ├── test/                    — JVM unit tests (Robolectric)
+│   └── androidTest/             — Instrumented Compose tests
+scripts/test_runner.py           — Unified test runner (all tiers)
+sync-tests/                      — On-device end-to-end sync scenarios (pytest)
 build.gradle.kts                 — App-level Gradle config
 settings.gradle.kts              — Project-level Gradle config
 ```
@@ -93,12 +152,17 @@ settings.gradle.kts              — Project-level Gradle config
 |---|---|
 | UI | Jetpack Compose + Material3 |
 | Architecture | MVVM with Hilt DI |
-| Database | Room (SQLite) |
+| Local storage | File-based document store (versioned metadata + page images) + Room (SQLite) for tags, workflows, and run history |
 | Document scanning | ML Kit Document Scanner API |
 | OCR | ML Kit Text Recognition v2 |
-| PDF | Android `PdfDocument` API |
+| PDF | Android `PdfDocument` API (export), `PdfRenderer` (import) |
+| Sync | Storage Access Framework + a custom multi-device engine (WorkManager) |
+| Encryption | AndroidX Security (`EncryptedSharedPreferences`) + BouncyCastle Argon2/AES-GCM |
+| Serialization | kotlinx.serialization |
 | Navigation | Jetpack Navigation Compose |
-| Testing | JUnit 4, Robolectric, Turbine, MockK |
+| Image loading | Coil |
+| Page reorder | `sh.calvin.reorderable` |
+| Testing | JUnit 4, Robolectric, Turbine, MockK, Compose UI Test |
 
 ## Support
 

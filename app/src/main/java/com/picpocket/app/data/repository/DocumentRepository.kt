@@ -5,7 +5,6 @@ import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
 import com.picpocket.app.data.model.Tag
-import com.picpocket.app.data.model.TagAutomation
 import kotlinx.coroutines.flow.Flow
 
 interface DocumentRepository {
@@ -40,8 +39,6 @@ interface DocumentRepository {
     suspend fun deleteTags(tagIds: List<Long>)
     suspend fun setDocumentTags(documentId: DocumentId, tagIds: List<Long>)
 
-    fun observeTagAutomations(tagId: Long): Flow<List<TagAutomation>>
-    suspend fun getAutomationsForTagIds(tagIds: List<Long>): List<TagAutomation>
-    suspend fun createAutomation(automation: TagAutomation): Long
-    suspend fun deleteAutomation(id: Long)
+    /** Records that the document was opened ("last seen"); local-only. */
+    suspend fun markDocumentAccessed(documentId: DocumentId)
 }

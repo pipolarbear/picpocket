@@ -17,6 +17,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.automirrored.filled.Label
@@ -58,6 +59,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onDonateClick: () -> Unit = {},
     onTagsClick: () -> Unit = {},
+    onWorkflowsClick: () -> Unit = {},
     onSyncClick: () -> Unit = {},
     onTracingClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -316,11 +318,43 @@ fun SettingsScreen(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Manage Tags",
+                            "Tags",
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            "Create, rename, or delete tags. Manage workflows.",
+                            "Create, rename, or delete tags.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onWorkflowsClick),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.AccountTree,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Workflows",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            "Automate document actions on events.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

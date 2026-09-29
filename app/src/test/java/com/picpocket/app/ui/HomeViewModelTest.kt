@@ -408,4 +408,38 @@ class HomeViewModelTest {
         assertEquals("Import failed", viewModel.uiState.value.importErrorMessage)
         assertFalse(viewModel.uiState.value.showImportProgress)
     }
+
+    @Test
+    fun `default sort is last seen descending`() = runTest {
+        val a = repo.createDocument("A").getOrThrow()
+        val b = repo.createDocument("B").getOrThrow()
+        repo.setLastAccessed(a, 1_000)
+        repo.setLastAccessed(b, 2_000)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(
+            "most recently seen first",
+            listOf(b, a),
+            viewModel.uiState.value.documents.map { it.id },
+        )
+    }
+
+    @Test
+    fun `reverse inverts the selected sort`() = runTest {
+        val a = repo.createDocument("A").getOrThrow()
+        val b = repo.createDocument("B").getOrThrow()
+        repo.setLastAccessed(a, 1_000)
+        repo.setLastAccessed(b, 2_000)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.toggleSortReversed()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.sortReversed)
+        assertEquals(
+            "least recently seen first",
+            listOf(a, b),
+            viewModel.uiState.value.documents.map { it.id },
+        )
+    }
 }

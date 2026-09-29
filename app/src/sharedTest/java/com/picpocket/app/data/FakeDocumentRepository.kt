@@ -5,10 +5,10 @@ import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
 import com.picpocket.app.data.model.Tag
-import com.picpocket.app.data.model.TagAutomation
 import com.picpocket.app.data.repository.DocumentRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 class FakeDocumentRepository : DocumentRepository {
@@ -19,14 +19,27 @@ class FakeDocumentRepository : DocumentRepository {
     private val tags = MutableStateFlow<List<Tag>>(emptyList())
     private val documentTags = mutableMapOf<DocumentId, MutableStateFlow<List<Tag>>>()
     private val documentTagMap = MutableStateFlow<Map<DocumentId, List<Tag>>>(emptyMap())
+    private val lastAccessed = MutableStateFlow<Map<DocumentId, Long>>(emptyMap())
     private var nextDocId = 0
     private var nextTagId = 1L
 
-    override fun observeDocuments(): Flow<List<Document>> = documents
+    var failDeleteDocument = false
 
-    override fun observeDocument(documentId: DocumentId): Flow<Document?> {
-        return documents.map { list -> list.find { it.id == documentId } }
+    /** Test helper: set a deterministic "last seen" time. */
+    fun setLastAccessed(id: DocumentId, at: Long) {
+        lastAccessed.value = lastAccessed.value + (id to at)
     }
+
+    private fun withAccess(doc: Document): Document =
+        doc.copy(lastAccessedAt = lastAccessed.value[doc.id] ?: doc.updatedAt)
+
+    override fun observeDocuments(): Flow<List<Document>> =
+        combine(documents, lastAccessed) { docs, access ->
+            docs.map { it.copy(lastAccessedAt = access[it.id] ?: it.updatedAt) }
+        }
+
+    override fun observeDocument(documentId: DocumentId): Flow<Document?> =
+        observeDocuments().map { list -> list.find { it.id == documentId } }
 
     override fun observePages(documentId: DocumentId): Flow<List<Page>> {
         return pageLists.getOrPut(documentId) { MutableStateFlow(emptyList()) }
@@ -34,7 +47,7 @@ class FakeDocumentRepository : DocumentRepository {
 
     override suspend fun getDocument(documentId: DocumentId): Result<Document> {
         val doc = documents.value.find { it.id == documentId }
-        return if (doc != null) Result.success(doc) else Result.failure(Exception("Document not found"))
+        return if (doc != null) Result.success(withAccess(doc)) else Result.failure(Exception("Document not found"))
     }
 
     fun seedDocument(id: DocumentId, name: String, ocrComplete: Boolean = false) {
@@ -103,7 +116,11 @@ class FakeDocumentRepository : DocumentRepository {
     }
 
     override suspend fun getAllDocuments(): Result<List<Document>> {
-        return Result.success(documents.value)
+        return Result.success(documents.value.map { withAccess(it) })
+    }
+
+    override suspend fun markDocumentAccessed(documentId: DocumentId) {
+        lastAccessed.value = lastAccessed.value + (documentId to System.currentTimeMillis())
     }
 
     override suspend fun deleteDocumentsByName(name: String): Result<Unit> {
@@ -120,6 +137,7 @@ class FakeDocumentRepository : DocumentRepository {
     }
 
     override suspend fun deleteDocument(documentId: DocumentId): Result<Unit> {
+        if (failDeleteDocument) return Result.failure(Exception("delete failed"))
         return deleteDocuments(listOf(documentId))
     }
 
@@ -238,25 +256,5 @@ class FakeDocumentRepository : DocumentRepository {
             map[id] = state.value
         }
         documentTagMap.value = map
-    }
-
-    private val tagAutomations = MutableStateFlow<List<TagAutomation>>(emptyList())
-
-    override fun observeTagAutomations(tagId: Long): Flow<List<TagAutomation>> {
-        return tagAutomations.map { list -> list.filter { it.tagId == tagId } }
-    }
-
-    override suspend fun getAutomationsForTagIds(tagIds: List<Long>): List<TagAutomation> {
-        return tagAutomations.value.filter { it.tagId in tagIds }
-    }
-
-    override suspend fun createAutomation(automation: TagAutomation): Long {
-        val id = tagAutomations.value.size.toLong() + 1
-        tagAutomations.value = tagAutomations.value + automation.copy(id = id)
-        return id
-    }
-
-    override suspend fun deleteAutomation(id: Long) {
-        tagAutomations.value = tagAutomations.value.filter { it.id != id }
     }
 }
