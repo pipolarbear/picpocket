@@ -8,6 +8,7 @@ import com.picpocket.app.drive.DriveAuthManager
 import com.picpocket.app.drive.DriveAuthState
 import com.picpocket.app.drive.DriveConnectivityChecker
 import com.picpocket.app.drive.EncryptionManager
+import com.picpocket.app.drive.PassphraseStore
 import com.picpocket.app.drive.SyncState
 import com.picpocket.app.util.MainCoroutineRule
 import io.mockk.coEvery
@@ -44,6 +45,7 @@ class SyncManagerTest {
     private val deviceRegistry = mockk<DeviceRegistry>()
     private val driveFileManager = mockk<DriveFileManager>()
     private val encryptionManager = mockk<EncryptionManager>()
+    private val passphraseStore = mockk<PassphraseStore>(relaxed = true)
     private val retryHandler = mockk<RetryHandler>()
     private val syncSettings = mockk<SyncSettings>()
     private val context = mockk<Context>()
@@ -92,6 +94,7 @@ class SyncManagerTest {
             driveFileManager,
             deviceRegistry,
             encryptionManager,
+            passphraseStore,
             retryHandler,
             syncSettings,
             syncMutex,

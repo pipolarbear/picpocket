@@ -36,6 +36,7 @@ class SyncSmokeTest {
     private val deviceRegistry = mockk<DeviceRegistry>()
     private val driveFileManager = mockk<DriveFileManager>()
     private val encryptionManager = mockk<EncryptionManager>()
+    private val passphraseStore = mockk<com.picpocket.app.drive.PassphraseStore>(relaxed = true)
     private val retryHandler = mockk<RetryHandler>()
     private val syncSettings = mockk<SyncSettings>()
     private val context = mockk<android.content.Context>()
@@ -81,6 +82,7 @@ class SyncSmokeTest {
             driveFileManager,
             deviceRegistry,
             encryptionManager,
+            passphraseStore,
             retryHandler,
             syncSettings,
             syncMutex,

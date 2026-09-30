@@ -146,6 +146,7 @@ SCENARIO_SERIAL_ARGS = [
     "scenarios/test_05_orphan.py",
     "scenarios/test_09_passphrase_change_reencrypt.py",
     "scenarios/test_10_contention.py",
+    "scenarios/test_13_sync_setup_code.py",
 ]
 
 # scenario parallel phase: worker-1 (5554/w1) vs worker-2 (5556/w2)
@@ -172,7 +173,7 @@ EXPECTED_COUNTS = {
     "instrumented": None,  # parsed from JUnit XML after the batch run
     "infra": None,         # collected with pytest --collect-only
     "saf": 4,
-    "scenario": 13 + 5,    # parallel workers (7 + 6) + serial phase (5)
+    "scenario": 13 + 5 + 1,  # parallel workers (7 + 6) + serial phase (5) + setup-code join
 }
 
 TIERS = {

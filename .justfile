@@ -230,6 +230,7 @@ scenario-two-device *args: clear-rclone-cache
         scenarios/test_05_orphan.py \
         scenarios/test_09_passphrase_change_reencrypt.py \
         scenarios/test_10_contention.py \
+        scenarios/test_13_sync_setup_code.py \
         {{args}}
 
 # FULL SYNC SUITE via the unified runner: the scenario tier runs

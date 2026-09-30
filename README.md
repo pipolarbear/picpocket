@@ -47,6 +47,14 @@ encrypted before they are uploaded, so the provider only ever sees ciphertext,
 and you can change or disable the passphrase later. (This is separate from the
 per-file password a workflow's `encrypt` action can apply.)
 
+To add another device, open **Sync → Share or scan setup** on the device that is
+already synced and scan its QR code — or copy the setup code and paste it on the
+other device. The setup code carries the folder and, when encryption is on, the
+passphrase and its generation, so the new device joins in one step. The new
+device still confirms the folder in the system picker to grant access, and you
+must re-apply the setup after reinstalling the app (folder grants do not survive
+a reinstall). Because the code contains your passphrase, treat it as sensitive.
+
 ## Workflows
 
 Workflows automate document handling: **when** a document event happens, **if**

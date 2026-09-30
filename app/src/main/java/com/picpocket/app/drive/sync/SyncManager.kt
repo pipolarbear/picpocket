@@ -14,6 +14,7 @@ import com.picpocket.app.drive.DriveAuthManager
 import com.picpocket.app.drive.DriveAuthState
 import com.picpocket.app.drive.DriveConnectivityChecker
 import com.picpocket.app.drive.EncryptionManager
+import com.picpocket.app.drive.PassphraseStore
 import com.picpocket.app.drive.SyncState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,7 @@ class SyncManager @Inject constructor(
     private val driveFileManager: DriveFileManager,
     private val deviceRegistry: DeviceRegistry,
     private val encryptionManager: EncryptionManager,
+    private val passphraseStore: PassphraseStore,
     private val retryHandler: RetryHandler,
     private val syncSettings: SyncSettings,
     private val syncMutex: SyncMutex,
@@ -85,6 +87,13 @@ class SyncManager @Inject constructor(
         if (!driveConnectivityChecker.isNetworkAvailable()) { Tracing.d(Category.DRIVE_API, TAG, "performSync: no network"); return }
         if (isSyncing) { Tracing.d(Category.DRIVE_API, TAG, "performSync: already syncing"); return }
         if (!localDriveIndex.hasValidFolder()) { Tracing.d(Category.DRIVE_API, TAG, "performSync: no folder configured"); _syncState.value = SyncState.Error("No folder configured"); return }
+
+        // Cache the persisted passphrase: a sync (e.g. from the background worker)
+        // can run before any screen loads it, and encryption plus the verifier
+        // depend on the cached value.
+        if (!encryptionManager.isEncryptionEnabled) {
+            passphraseStore.getPassphrase()?.takeIf { it.isNotBlank() }?.let { encryptionManager.setPassphrase(it) }
+        }
 
         Tracing.d(Category.DRIVE_API, TAG, "performSync: starting rootFolderId='${localDriveIndex.getRootFolderId()}'")
         isSyncing = true
