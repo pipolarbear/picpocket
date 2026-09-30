@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DevicesOther
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -57,6 +58,7 @@ import com.picpocket.app.drive.SyncState
 @Composable
 fun SyncScreen(
     onNavigateBack: () -> Unit,
+    onSyncSetupClick: () -> Unit = {},
     viewModel: SyncViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -118,6 +120,8 @@ fun SyncScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("Select Folder")
                     }
+                    Spacer(Modifier.height(16.dp))
+                    SyncSetupEntryCard(onClick = onSyncSetupClick)
                 }
                 is ConnectionState.Connected -> {
                     Card(modifier = Modifier.fillMaxWidth()) {
@@ -266,6 +270,10 @@ fun SyncScreen(
                             }
                         }
                     }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    SyncSetupEntryCard(onClick = onSyncSetupClick)
                 }
             }
         }
@@ -428,6 +436,36 @@ private fun EncryptionSection(
     } else {
         OutlinedButton(onClick = { showPassphraseDialog = true }, enabled = !isSyncing) {
             Text("Enable Encryption")
+        }
+    }
+}
+
+@Composable
+private fun SyncSetupEntryCard(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.DevicesOther,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Share or scan setup", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Join this sync on another device",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

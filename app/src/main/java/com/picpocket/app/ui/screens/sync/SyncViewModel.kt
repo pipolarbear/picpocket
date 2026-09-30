@@ -10,6 +10,7 @@ import com.picpocket.app.drive.EncryptionManager
 import com.picpocket.app.drive.PassphraseStore
 import com.picpocket.app.drive.SyncState
 import com.picpocket.app.drive.sync.DeviceRegistry
+import com.picpocket.app.drive.sync.FolderLocator
 import com.picpocket.app.drive.sync.LocalDriveIndex
 import com.picpocket.app.drive.sync.RetryHandler
 import com.picpocket.app.drive.sync.SyncManager
@@ -123,14 +124,19 @@ class SyncViewModel @Inject constructor(
             return
         }
         val app = getApplication<Application>()
-        app.contentResolver.takePersistableUriPermission(
-            uri,
-            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-        )
+        runCatching {
+            app.contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
         retryHandler.reset()
         localDriveIndex.setRootTreeUri(uri.toString())
-        val folderName = DocumentFile.fromTreeUri(app, uri)?.name ?: "Drive folder"
+        val folderName = DocumentFile.fromTreeUri(app, uri)?.name ?: "Folder"
         localDriveIndex.setRootFolderName(folderName)
+        localDriveIndex.setRootFolderId(
+            FolderLocator.fromTreeUri(uri.toString(), folderName)?.documentId ?: "",
+        )
         _actionState.value = SyncActionState.Idle
         verifyConnection()
     }

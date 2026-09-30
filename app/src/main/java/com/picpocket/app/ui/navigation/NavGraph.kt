@@ -11,7 +11,7 @@ import com.picpocket.app.ui.screens.home.HomeScreen
 import com.picpocket.app.ui.screens.scanner.ScannerScreen
 import com.picpocket.app.ui.screens.donate.DonateScreen
 import com.picpocket.app.ui.screens.deleted.DeletedDocumentsScreen
-import com.picpocket.app.ui.screens.pairing.DevicePairingScreen
+import com.picpocket.app.ui.screens.pairing.SyncSetupScreen
 import com.picpocket.app.ui.screens.settings.SettingsScreen
 import com.picpocket.app.ui.screens.settings.TracingScreen
 import com.picpocket.app.ui.screens.sync.SyncScreen
@@ -123,6 +123,7 @@ fun PicPocketNavGraph(navController: NavHostController) {
         composable(Routes.SYNC) {
             SyncScreen(
                 onNavigateBack = { navController.popBackStack() },
+                onSyncSetupClick = { navController.navigate(Routes.PAIRING) },
             )
         }
         composable(Routes.DELETED) {
@@ -131,7 +132,7 @@ fun PicPocketNavGraph(navController: NavHostController) {
             )
         }
         composable(Routes.PAIRING) {
-            DevicePairingScreen(
+            SyncSetupScreen(
                 onNavigateBack = { navController.popBackStack() },
             )
         }

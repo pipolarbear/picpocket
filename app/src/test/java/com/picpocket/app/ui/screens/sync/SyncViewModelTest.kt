@@ -159,6 +159,7 @@ class SyncViewModelTest {
         val uri = android.net.Uri.parse("content://org.nextcloud.documents/tree/abc")
         every { localDriveIndex.setRootTreeUri(any()) } returns Unit
         every { localDriveIndex.setRootFolderName(any()) } returns Unit
+        every { localDriveIndex.setRootFolderId(any()) } returns Unit
         every { localDriveIndex.hasValidFolder() } returns true
         every { localDriveIndex.getRootFolderName() } returns "My Folder"
         every { driveAuthManager.authState } returns MutableStateFlow(DriveAuthState.Connected)
@@ -167,6 +168,7 @@ class SyncViewModelTest {
         viewModel.handleFolderPickerResult(uri)
 
         assertEquals(SyncActionState.Idle, viewModel.actionState.value)
+        verify { localDriveIndex.setRootFolderId("abc") }
     }
 
     @Test
