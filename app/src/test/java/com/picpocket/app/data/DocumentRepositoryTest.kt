@@ -40,6 +40,12 @@ private fun tempPageUri(): String {
     return Uri.fromFile(f).toString()
 }
 
+private fun tempPageUri(marker: Int): String {
+    val f = File.createTempFile("page", ".jpg")
+    f.writeBytes(byteArrayOf(marker.toByte()))
+    return Uri.fromFile(f).toString()
+}
+
 private fun createOcrManager(app: android.app.Application): OcrManager {
     return OcrManager(
         object : OcrEngine {
@@ -547,5 +553,105 @@ class DocumentRepositoryTest {
         doc = repo.getDocument(docId).getOrNull()
         assertNotNull(doc)
         assertEquals(1, doc?.pageCount)
+    }
+
+    @Test
+    fun `collate keeps sources and inserts the merged page at the first source`() = runTest {
+        val docId = repository.createDocument("Collate Doc").getOrThrow()
+        repository.addPage(docId, tempPageUri(1))
+        repository.addPage(docId, tempPageUri(2))
+        repository.addPage(docId, tempPageUri(3))
+        val originals = repository.getPages(docId).getOrThrow().map { it.filename }
+
+        val result = repository.collatePages(
+            documentId = docId,
+            sourcePageNumbers = listOf(2, 3),
+            mergedImageUri = tempPageUri(),
+            removeSources = false,
+        )
+
+        assertTrue(result.isSuccess)
+        val pages = repository.getPages(docId).getOrThrow()
+        assertEquals(4, pages.size)
+        assertEquals(originals[0], pages[0].filename)
+        assertTrue("merged page should sit where page 2 was", pages[1].filename !in originals)
+        assertEquals(originals[1], pages[2].filename)
+        assertEquals(originals[2], pages[3].filename)
+    }
+
+    @Test
+    fun `collate remove removes sources and keeps the merged page in their place`() = runTest {
+        val docId = repository.createDocument("Collate Doc").getOrThrow()
+        repository.addPage(docId, tempPageUri())
+        repository.addPage(docId, tempPageUri())
+        repository.addPage(docId, tempPageUri())
+
+        val result = repository.collatePages(
+            documentId = docId,
+            sourcePageNumbers = listOf(1, 2),
+            mergedImageUri = tempPageUri(),
+            removeSources = true,
+        )
+
+        assertTrue(result.isSuccess)
+        val pages = repository.getPages(docId).getOrThrow()
+        assertEquals(2, pages.size)
+        assertEquals(1, pages[0].pageNumber)
+        assertEquals(2, pages[1].pageNumber)
+    }
+
+    @Test
+    fun `a failed collate leaves the document unchanged`() = runTest {
+        val docId = repository.createDocument("Collate Doc").getOrThrow()
+        repository.addPage(docId, tempPageUri())
+
+        val result = repository.collatePages(
+            documentId = docId,
+            sourcePageNumbers = listOf(1),
+            mergedImageUri = "file:///does/not/exist.jpg",
+            removeSources = true,
+        )
+
+        assertTrue(result.isFailure)
+        assertEquals(1, repository.getPages(docId).getOrThrow().size)
+    }
+
+    @Test
+    fun `collate inherits OCR text from the sources in order`() = runTest {
+        val docId = repository.createDocument("Collate Doc").getOrThrow()
+        repository.addPage(docId, tempPageUri())
+        repository.addPage(docId, tempPageUri())
+        repository.updatePageOcrText(docId, 1, "alpha")
+        repository.updatePageOcrText(docId, 2, "beta")
+
+        repository.collatePages(
+            documentId = docId,
+            sourcePageNumbers = listOf(1, 2),
+            mergedImageUri = tempPageUri(),
+            removeSources = false,
+        ).getOrThrow()
+
+        val pages = repository.getPages(docId).getOrThrow()
+        assertEquals("alpha\nbeta", pages.first { it.ocrText == "alpha\nbeta" }.ocrText)
+        assertTrue(repository.getDocument(docId).getOrThrow().ocrComplete)
+    }
+
+    @Test
+    fun `collate without source OCR leaves the merged page pending`() = runTest {
+        val docId = repository.createDocument("Collate Doc").getOrThrow()
+        repository.addPage(docId, tempPageUri())
+        repository.addPage(docId, tempPageUri())
+
+        repository.collatePages(
+            documentId = docId,
+            sourcePageNumbers = listOf(1, 2),
+            mergedImageUri = tempPageUri(),
+            removeSources = false,
+        ).getOrThrow()
+
+        val pages = repository.getPages(docId).getOrThrow()
+        assertEquals(3, pages.size)
+        assertTrue("merged page must be pending OCR", pages.any { it.ocrText == null })
+        assertTrue(!repository.getDocument(docId).getOrThrow().ocrComplete)
     }
 }

@@ -33,9 +33,7 @@ class SearchablePdfGenerator @Inject constructor() : PdfGenerator {
 
                 val bitmapW = bitmap.width
                 val bitmapH = bitmap.height
-                val isLandscape = bitmapW > bitmapH
-                val pageW = if (isLandscape) pageSize.heightPt else pageSize.widthPt
-                val pageH = if (isLandscape) pageSize.widthPt else pageSize.heightPt
+                val (pageW, pageH) = pageDimensionsFor(pageSize, bitmapW, bitmapH)
 
                 val pageInfo = PdfDocument.PageInfo.Builder(pageW, pageH, page.pageNumber).create()
                 val pdfPage = document.startPage(pageInfo)

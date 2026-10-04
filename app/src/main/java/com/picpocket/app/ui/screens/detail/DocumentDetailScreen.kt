@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Merge
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -200,6 +202,17 @@ fun DocumentDetailScreen(
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.Share, contentDescription = null)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Collate pages") },
+                                enabled = state.pages.size >= 2,
+                                onClick = {
+                                    viewModel.hideOverflowMenu()
+                                    viewModel.showCollateDialog()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Merge, contentDescription = null)
                                 },
                             )
                             DropdownMenuItem(
@@ -567,6 +580,10 @@ fun DocumentDetailScreen(
         )
     }
 
+    if (state.showCollateDialog) {
+        CollateEditorScreen(state = state, viewModel = viewModel)
+    }
+
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -708,3 +725,4 @@ private fun formatFileSize(bytes: Long): String {
         else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
     }
 }
+

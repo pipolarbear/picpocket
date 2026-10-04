@@ -16,6 +16,10 @@ import com.picpocket.app.data.model.Tag
 import com.picpocket.app.data.repository.DocumentRepository
 import com.picpocket.app.data.store.DocumentStore
 import com.picpocket.app.di.SearchablePdf
+import com.picpocket.app.domain.collate.Collate
+import com.picpocket.app.domain.collate.CollateAxis
+import com.picpocket.app.domain.collate.CollateLayout
+import com.picpocket.app.domain.collate.CollatePlacement
 import com.picpocket.app.domain.ocr.OcrManager
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.export.PdfGenerator
@@ -32,6 +36,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import java.io.File
 import javax.inject.Inject
 
@@ -62,6 +70,18 @@ data class DetailUiState(
     val pendingRescanIntentSender: IntentSender? = null,
     val ocrRunning: Boolean = false,
     val syncExcluded: Boolean = false,
+    val showCollateDialog: Boolean = false,
+    val collateSelection: Set<Int> = emptySet(),
+    val collateOrder: List<Int> = emptyList(),
+    val collateLayout: CollateLayout = CollateLayout.AUTO,
+    val collateMatchSizes: Boolean = true,
+    val collateRemoveSources: Boolean = false,
+    val collateBusy: Boolean = false,
+    val collateError: String? = null,
+    val collatePreview: android.graphics.Bitmap? = null,
+    val collateAxis: CollateAxis = CollateAxis.VERTICAL,
+    val collateJoints: List<Int> = emptyList(),
+    val collateResetToken: Int = 0,
 )
 
 
@@ -494,6 +514,214 @@ class DocumentDetailViewModel @Inject constructor(
         return when (result) {
             is com.picpocket.app.domain.export.PdfResult.Success -> Uri.parse(result.uri)
             is com.picpocket.app.domain.export.PdfResult.Error -> null
+        }
+    }
+
+    // --- Collate: merge selected pages into one continuous image ---
+
+    private var collateSources: List<Bitmap> = emptyList()
+    private var collatePlacements: List<CollatePlacement> = emptyList()
+    private var collateAxis: CollateAxis = CollateAxis.VERTICAL
+
+    fun showCollateDialog() {
+        if (_uiState.value.pages.size < 2) return
+        val allPages = _uiState.value.pages.map { it.pageNumber }
+        collateSources = emptyList()
+        collatePlacements = emptyList()
+        _uiState.update {
+            it.copy(
+                showCollateDialog = true,
+                collateSelection = allPages.toSet(),
+                collateOrder = allPages,
+                collateLayout = CollateLayout.AUTO,
+                collateMatchSizes = true,
+                collateRemoveSources = false,
+                collateBusy = false,
+                collateError = null,
+                collatePreview = null,
+            )
+        }
+    }
+
+    fun hideCollateDialog() =
+        _uiState.update { it.copy(showCollateDialog = false, collatePreview = null, collateError = null) }
+
+    fun toggleCollateSelection(pageNumber: Int) = _uiState.update { state ->
+        if (pageNumber in state.collateSelection) {
+            state.copy(
+                collateSelection = state.collateSelection - pageNumber,
+                collateOrder = state.collateOrder - pageNumber,
+            )
+        } else {
+            state.copy(
+                collateSelection = state.collateSelection + pageNumber,
+                collateOrder = state.collateOrder + pageNumber,
+            )
+        }
+    }
+
+    fun selectAllCollate() = _uiState.update { state ->
+        val all = state.pages.map { it.pageNumber }
+        state.copy(collateSelection = all.toSet(), collateOrder = all)
+    }
+
+    fun clearCollateSelection() = _uiState.update {
+        it.copy(collateSelection = emptySet(), collateOrder = emptyList())
+    }
+
+    fun setCollateLayout(layout: CollateLayout) {
+        _uiState.update { it.copy(collateLayout = layout) }
+        if (_uiState.value.collatePreview != null) buildCollatePreview()
+    }
+
+    fun setCollateMatchSizes(match: Boolean) {
+        _uiState.update { it.copy(collateMatchSizes = match) }
+        if (_uiState.value.collatePreview != null) buildCollatePreview()
+    }
+
+    fun setCollateRemoveSources(remove: Boolean) = _uiState.update { it.copy(collateRemoveSources = remove) }
+
+    /** Reorders the selected sources; re-aligns the preview if one is shown. */
+    fun moveCollateSource(from: Int, to: Int) {
+        _uiState.update { state ->
+            val order = state.collateOrder.toMutableList()
+            if (from !in order.indices || to !in order.indices) return@update state
+            val item = order.removeAt(from)
+            order.add(to, item)
+            state.copy(collateOrder = order)
+        }
+        if (_uiState.value.collatePreview != null) buildCollatePreview()
+    }
+
+    /** Loads the selected pages, normalizes their sizes, aligns them, and shows a preview. */
+    fun buildCollatePreview() {
+        val state = _uiState.value
+        val order = state.collateOrder.ifEmpty { state.pages.map { it.pageNumber } }
+        val selected = order.filter { it in state.collateSelection }
+            .mapNotNull { number -> state.pages.find { it.pageNumber == number } }
+        if (selected.size < 2) {
+            _uiState.update { it.copy(collateError = "Select at least two pages") }
+            return
+        }
+        _uiState.update { it.copy(collateBusy = true, collateError = null) }
+        viewModelScope.launch {
+            val outcome = withContext(Dispatchers.Default) {
+                runCatching {
+                    val bitmaps = selected.mapNotNull { page ->
+                        val path = Uri.parse(page.imageUri).path
+                        if (path != null) BitmapFactory.decodeFile(path) else null
+                    }
+                    if (bitmaps.size != selected.size) return@runCatching null
+                    val resolved = Collate.place(bitmaps, state.collateLayout)
+                    if (resolved is Collate.PlacementResult.Failure) return@runCatching resolved
+                    val axis = (resolved as Collate.PlacementResult.Success).axis
+                    val normalized = if (state.collateMatchSizes) Collate.normalize(bitmaps, axis) else bitmaps
+                    val placed = Collate.place(normalized, state.collateLayout)
+                    if (placed is Collate.PlacementResult.Failure) return@runCatching placed
+                    Triple(normalized, placed as Collate.PlacementResult.Success, state.collateLayout)
+                }.getOrNull()
+            }
+            when (outcome) {
+                null ->
+                    _uiState.update { it.copy(collateBusy = false, collateError = "Could not load the selected pages") }
+                is Collate.PlacementResult.Failure ->
+                    _uiState.update { it.copy(collateBusy = false, collateError = outcome.reason) }
+                is Triple<*, *, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val bitmaps = outcome.first as List<Bitmap>
+                    val placed = outcome.second as Collate.PlacementResult.Success
+                    val layout = outcome.third as CollateLayout
+                    collateSources = bitmaps
+                    collatePlacements = placed.placements
+                    collateAxis = placed.axis
+                    val preview = withContext(Dispatchers.Default) { Collate.compose(bitmaps, placed.placements) }
+                    _uiState.update {
+                        it.copy(
+                            collateBusy = false,
+                            collatePreview = preview,
+                            collateLayout = layout,
+                            collateAxis = placed.axis,
+                            collateJoints = jointPositions(placed.placements),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /** Returns to the freshly-aligned state: clears seam drags, re-aligns, resets zoom. */
+    fun resetCollate() {
+        collatePlacements = emptyList()
+        _uiState.update { it.copy(collateResetToken = it.collateResetToken + 1) }
+        buildCollatePreview()
+    }
+
+    /**
+     * Manual correction: dragging the joint before source [jointIndex] + 1 shifts
+     * every source after that joint along the stitch axis and re-composites.
+     */
+    fun nudgeCollateJoint(jointIndex: Int, delta: Int) {
+        if (collateSources.size < 2 || collatePlacements.isEmpty()) return
+        if (jointIndex !in 0 until collateSources.size - 1) return
+        collatePlacements = Collate.shiftTail(collatePlacements, collateAxis, jointIndex + 1, delta)
+        recomposeCollatePreview()
+    }
+
+    private fun recomposeCollatePreview() {
+        if (collateSources.isEmpty() || collatePlacements.isEmpty()) return
+        val placements = collatePlacements
+        viewModelScope.launch {
+            val preview = withContext(Dispatchers.Default) { Collate.compose(collateSources, placements) }
+            _uiState.update { it.copy(collatePreview = preview, collateJoints = jointPositions(placements)) }
+        }
+    }
+
+    private fun jointPositions(placements: List<CollatePlacement>): List<Int> =
+        (1 until placements.size).map { index ->
+            if (collateAxis == CollateAxis.VERTICAL) placements[index].y else placements[index].x
+        }
+
+    fun saveCollate() {
+        val state = _uiState.value
+        val preview = state.collatePreview ?: return
+        val selected = state.collateOrder.filter { it in state.collateSelection }
+        if (selected.size < 2) return
+        _uiState.update { it.copy(collateBusy = true) }
+        viewModelScope.launch {
+            val uri = withContext(Dispatchers.Default) {
+                runCatching {
+                    val app = getApplication<Application>()
+                    val dir = File(app.cacheDir, "collate").apply { mkdirs() }
+                    val out = File(dir, "merged_${System.currentTimeMillis()}.jpg")
+                    out.outputStream().use { preview.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                    Uri.fromFile(out).toString()
+                }.getOrNull()
+            }
+            if (uri == null) {
+                _uiState.update { it.copy(collateBusy = false, collateError = "Could not save the merged image") }
+                return@launch
+            }
+            val result = repository.collatePages(
+                documentId = currentDocumentId,
+                sourcePageNumbers = selected,
+                mergedImageUri = uri,
+                removeSources = state.collateRemoveSources,
+            )
+            if (result.isSuccess) {
+                _uiState.update {
+                    it.copy(
+                        collateBusy = false,
+                        showCollateDialog = false,
+                        collatePreview = null,
+                        collateSelection = emptySet(),
+                        collateOrder = emptyList(),
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(collateBusy = false, collateError = result.exceptionOrNull()?.message ?: "Collate failed")
+                }
+            }
         }
     }
 }

@@ -365,4 +365,53 @@ class DocumentDetailViewModelTest {
         assertEquals(sender, viewModel.uiState.value.pendingRescanIntentSender)
         assertEquals(1, viewModel.uiState.value.rescanPageNumber)
     }
+
+    @Test
+    fun `collate defaults to all pages selected`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.showCollateDialog()
+
+        assertEquals(setOf(1, 2), viewModel.uiState.value.collateSelection)
+        assertEquals(listOf(1, 2), viewModel.uiState.value.collateOrder)
+    }
+
+    @Test
+    fun `deselecting clears select-all and reordering updates the order`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+        viewModel.showCollateDialog()
+
+        viewModel.moveCollateSource(0, 1)
+        assertEquals(listOf(2, 1), viewModel.uiState.value.collateOrder)
+
+        viewModel.toggleCollateSelection(2)
+        assertEquals(setOf(1), viewModel.uiState.value.collateSelection)
+        assertEquals(listOf(1), viewModel.uiState.value.collateOrder)
+    }
+
+    @Test
+    fun `collate defaults keep sources and match sizes`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.showCollateDialog()
+
+        assertFalse(viewModel.uiState.value.collateRemoveSources)
+        assertTrue(viewModel.uiState.value.collateMatchSizes)
+        assertEquals(com.picpocket.app.domain.collate.CollateLayout.AUTO, viewModel.uiState.value.collateLayout)
+    }
+
+    @Test
+    fun `reset collate bumps the reset token`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+        viewModel.showCollateDialog()
+
+        val before = viewModel.uiState.value.collateResetToken
+        viewModel.resetCollate()
+
+        assertTrue(viewModel.uiState.value.collateResetToken > before)
+    }
 }

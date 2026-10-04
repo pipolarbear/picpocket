@@ -26,6 +26,7 @@ PicPocket is a local-first document scanner and organizer for Android: capture m
 - **SAF save location** — User picks where to save via Storage Access Framework; no storage permissions needed
 - **Import PDFs** — Import existing PDFs into the library as documents
 - **Page editing** — Append pages to a document, delete a single page, or rescan a page to replace its image
+- **Collate pages** — Merge selected pages into one continuous image. All pages are selected by default; pick a layout — **Auto** (find the overlap and stitch, showing which direction it chose), **Horizontal**, or **Vertical** (place without aligning) — then use the full-screen editor to zoom the preview, drag to reorder the sources, match their sizes, drag a seam to line the join up, or reset back to auto. Choose whether to remove the source pages after merging (kept by default). The merged page inherits the sources' OCR text (or is OCR'd if they have none). Export with the "Match image" page size to keep a tall strip at its own size with no margins. Targets flat surfaces — curled or folded pages are not flattened.
 - **Export & share** — Export to PDF (A0–A6, Letter, Legal, Tabloid; selectable quality); export with a searchable text layer when OCR is on; share or save via SAF
 - **Sync anywhere** — Point PicPocket at any Storage Access Framework folder (Google Drive, Nextcloud, …) and sync across devices that share it, with conflict handling
 - **Optional encryption** — Enable a passphrase and synced files are encrypted before they leave the device; change or disable it any time
