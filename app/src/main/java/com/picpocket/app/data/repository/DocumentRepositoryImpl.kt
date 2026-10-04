@@ -159,6 +159,53 @@ class DocumentRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun collatePages(
+        documentId: DocumentId,
+        sourcePageNumbers: List<Int>,
+        mergedImageUri: String,
+        removeSources: Boolean,
+        qualityTier: Int,
+    ): Result<Unit> {
+        val inheritedOcr = inheritedOcrText(documentId, sourcePageNumbers)
+        return runCatching {
+            val src = java.io.File(java.net.URI(mergedImageUri))
+            val tier = QualityTier.entries.getOrNull(qualityTier) ?: QualityTier.BEST
+            val dir = store.documentDir(documentId)
+            val tmp = java.io.File(dir, "tmp_collate_${System.nanoTime()}")
+            PageEncoder.encodePage(src, tmp, tier)
+            val filename = store.pageFilenameFor(tmp.readBytes())
+            val pageFile = store.pageFile(documentId, filename)
+            tmp.renameTo(pageFile)
+            store.insertMergedPage(
+                documentId = documentId,
+                mergedFilename = filename,
+                mergedFileSize = pageFile.length(),
+                sourcePageNumbers = sourcePageNumbers,
+                removeSources = removeSources,
+                mergedOcrText = inheritedOcr,
+            ).getOrThrow()
+            scope.launch { refreshDocuments() }
+            emit(TriggerEvent.PAGES_ADDED, documentId)
+            if (inheritedOcr == null) {
+                scope.launch { ocrManager.runOcr(documentId) }
+            }
+        }
+    }
+
+    /**
+     * Concatenates the selected pages' OCR text in page order so the merged page
+     * stays searchable. Returns null when any selected page has no text yet.
+     */
+    private suspend fun inheritedOcrText(documentId: DocumentId, sourcePageNumbers: List<Int>): String? {
+        val doc = store.readMetadata(documentId).getOrNull() ?: return null
+        val texts = doc.pages
+            .filter { it.pageNumber in sourcePageNumbers }
+            .sortedBy { it.pageNumber }
+            .map { it.ocrText }
+        if (texts.isEmpty() || texts.any { it == null }) return null
+        return texts.filterNotNull().joinToString("\n")
+    }
+
     override suspend fun updatePageOcrText(documentId: DocumentId, pageNumber: Int, ocrText: String): Result<Unit> {
         return store.updatePageOcrText(documentId, pageNumber, ocrText)
     }

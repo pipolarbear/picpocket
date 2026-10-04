@@ -96,6 +96,42 @@ class FakeDocumentRepository : DocumentRepository {
         return Result.success(Unit)
     }
 
+    override suspend fun collatePages(
+        documentId: DocumentId,
+        sourcePageNumbers: List<Int>,
+        mergedImageUri: String,
+        removeSources: Boolean,
+        qualityTier: Int,
+    ): Result<Unit> {
+        val state = pageLists.getOrPut(documentId) { MutableStateFlow(emptyList()) }
+        val pages = state.value.sortedBy { it.pageNumber }
+        val sourceTexts = pages.filter { it.pageNumber in sourcePageNumbers }
+            .sortedBy { it.pageNumber }
+            .map { it.ocrText }
+        val inherited = if (sourceTexts.isNotEmpty() && sourceTexts.all { it != null }) {
+            sourceTexts.filterNotNull().joinToString("\n")
+        } else {
+            null
+        }
+        val firstIndex = pages.indexOfFirst { it.pageNumber in sourcePageNumbers }
+        val insertIndex = if (firstIndex < 0) pages.size else firstIndex
+        val kept = if (removeSources) pages.filter { it.pageNumber !in sourcePageNumbers } else pages
+        val next = (kept.maxOfOrNull { it.pageNumber } ?: 0) + 1
+        val merged = Page(
+            id = next.toLong(),
+            documentId = documentId,
+            pageNumber = 0,
+            filename = "merged_${next}.jpg",
+            imageUri = mergedImageUri,
+            ocrText = inherited,
+            createdAt = System.currentTimeMillis(),
+        )
+        state.value = kept.toMutableList()
+            .apply { add(insertIndex.coerceIn(0, size), merged) }
+            .mapIndexed { index, page -> page.copy(pageNumber = index + 1) }
+        return Result.success(Unit)
+    }
+
     override suspend fun updatePageOcrText(documentId: DocumentId, pageNumber: Int, ocrText: String): Result<Unit> {
         val state = pageLists[documentId] ?: return Result.success(Unit)
         state.value = state.value.map {

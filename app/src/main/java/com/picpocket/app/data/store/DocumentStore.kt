@@ -261,6 +261,48 @@ class DocumentStore @Inject constructor(
         Result.success(removed.map { it.filename })
     }
 
+    /**
+     * Adds the merged page and, when [removeSources], removes the source pages in
+     * a single metadata write. The merged page takes the position of the first
+     * source so reading order is preserved. `ocrComplete` is recomputed so a page
+     * without text is picked up by OCR later.
+     */
+    suspend fun insertMergedPage(
+        documentId: String,
+        mergedFilename: String,
+        mergedFileSize: Long,
+        sourcePageNumbers: List<Int>,
+        removeSources: Boolean,
+        mergedOcrText: String?,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val doc = readMetadata(documentId).getOrElse { return@withContext Result.failure(it) }
+        val sources = doc.pages.filter { it.pageNumber in sourcePageNumbers }
+        val firstSourceIndex = doc.pages.indexOfFirst { it.pageNumber in sourcePageNumbers }
+        val insertIndex = if (firstSourceIndex < 0) doc.pages.size else firstSourceIndex
+        val kept = if (removeSources) doc.pages.filter { it.pageNumber !in sourcePageNumbers } else doc.pages.toList()
+        val merged = StoredPage(
+            pageNumber = 0,
+            filename = mergedFilename,
+            fileSizeBytes = mergedFileSize,
+            ocrText = mergedOcrText,
+            createdAt = System.currentTimeMillis(),
+        )
+        val result = kept.toMutableList().apply { add(insertIndex.coerceIn(0, size), merged) }
+        result.forEachIndexed { index, page -> result[index] = page.copy(pageNumber = index + 1) }
+        writeMetadata(
+            documentId,
+            doc.copy(
+                pages = result,
+                ocrComplete = result.all { it.ocrText != null },
+                updatedAt = System.currentTimeMillis(),
+            ),
+        ).getOrElse { return@withContext Result.failure(it) }
+        if (removeSources) {
+            for (page in sources) pageFile(documentId, page.filename).delete()
+        }
+        Result.success(Unit)
+    }
+
     suspend fun updateSyncExclude(documentId: String, excluded: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         val doc = readMetadata(documentId).getOrElse { return@withContext Result.failure(it) }
         writeMetadata(documentId, doc.copy(syncExclude = excluded))

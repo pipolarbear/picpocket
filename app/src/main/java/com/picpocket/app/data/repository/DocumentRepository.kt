@@ -15,6 +15,7 @@ interface DocumentRepository {
     suspend fun getPages(documentId: DocumentId): Result<List<Page>>
     suspend fun createDocument(name: String, qualityTier: Int = 0, pageSize: String? = null): Result<DocumentId>
     suspend fun addPage(documentId: DocumentId, imageUri: String, filterTypeOrdinal: Int = 0, fileSizeBytes: Long = 0, qualityTier: Int = 0): Result<Unit>
+    suspend fun collatePages(documentId: DocumentId, sourcePageNumbers: List<Int>, mergedImageUri: String, removeSources: Boolean, qualityTier: Int = 0): Result<Unit>
     suspend fun updatePageOcrText(documentId: DocumentId, pageNumber: Int, ocrText: String): Result<Unit>
     suspend fun updateDocumentName(documentId: DocumentId, name: String): Result<Unit>
     suspend fun getDocumentsByName(name: String): Result<List<Document>>
