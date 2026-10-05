@@ -1,8 +1,10 @@
 package com.picpocket.app.drive.sync
 
+import com.picpocket.app.data.model.PageKind
 import com.picpocket.app.data.store.DocumentStore
 import com.picpocket.app.data.store.MetadataNaming
 import com.picpocket.app.data.store.StoredDocument
+import com.picpocket.app.data.store.StoredPage
 import com.picpocket.app.util.MainCoroutineRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -117,6 +119,32 @@ class DownloadEngineTest {
 
         assertTrue(result)
         assertTrue(pageFile.readBytes().contentEquals(byteArrayOf(9, 8, 7)))
+        coVerify { documentStore.writeMetadataAt("doc-1", meta, 4, 2) }
+    }
+
+    @Test
+    fun `pullDocument downloads a native pdf source and writes metadata`() = runTest {
+        every { localDriveIndex.getRootTreeUri() } returns "content://tree/"
+        val meta = StoredDocument(
+            id = "doc-1",
+            name = "Doc",
+            createdAt = 0L,
+            updatedAt = 0L,
+            pages = mutableListOf(
+                StoredPage(pageNumber = 1, filename = "source.pdf", createdAt = 0L, kind = PageKind.PDF, pdfPageIndex = 0),
+            ),
+        )
+        val remote = DownloadEngine.RemoteDocument("doc-1", listOf("source.pdf"), meta, 4, 2, false)
+        val pageFile = File.createTempFile("source", ".pdf")
+        coEvery { driveFileManager.readFile("content://tree/", "doc-1", "source.pdf", any()) } returns byteArrayOf(1, 2, 3)
+        every { documentStore.pageFile("doc-1", "source.pdf") } returns pageFile
+        every { documentStore.documentDir("doc-1") } returns createTempDir()
+        coEvery { documentStore.writeMetadataAt("doc-1", meta, 4, 2) } returns Result.success(Unit)
+
+        val result = engine.pullDocument(remote, emptyMap())
+
+        assertTrue(result)
+        assertTrue(pageFile.readBytes().contentEquals(byteArrayOf(1, 2, 3)))
         coVerify { documentStore.writeMetadataAt("doc-1", meta, 4, 2) }
     }
 }

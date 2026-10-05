@@ -146,16 +146,10 @@ private fun ZoomablePage(page: Page, loadBitmap: (suspend (Int) -> android.graph
     var imageWidth by remember(page.imageUri) { mutableIntStateOf(0) }
     var imageHeight by remember(page.imageUri) { mutableIntStateOf(0) }
     var renderedBitmap by remember(page.imageUri) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var renderWidth by remember(page.imageUri) { mutableIntStateOf(0) }
 
     LaunchedEffect(page.imageUri) {
-        if (page.kind == com.picpocket.app.data.model.PageKind.PDF && loadBitmap != null) {
-            val bitmap = withContext(Dispatchers.IO) { loadBitmap(1600) }
-            renderedBitmap = bitmap
-            if (bitmap != null) {
-                imageWidth = bitmap.width
-                imageHeight = bitmap.height
-            }
-        } else {
+        if (page.kind != com.picpocket.app.data.model.PageKind.PDF) {
             withContext(Dispatchers.IO) {
                 val path = Uri.parse(page.imageUri).path
                 if (path != null) {
@@ -173,6 +167,23 @@ private fun ZoomablePage(page: Page, loadBitmap: (suspend (Int) -> android.graph
     var offsetY by remember { mutableFloatStateOf(0f) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // Render PDF pages sharper as the zoom settles (debounced by LaunchedEffect restarts).
+    LaunchedEffect(page.imageUri, scale) {
+        if (page.kind == com.picpocket.app.data.model.PageKind.PDF && loadBitmap != null) {
+            val target = if (scale > 1.4f) 2400 else 1600
+            if (target != renderWidth) {
+                delay(250)
+                val bitmap = withContext(Dispatchers.IO) { loadBitmap(target) }
+                if (bitmap != null) {
+                    renderedBitmap = bitmap
+                    renderWidth = target
+                    imageWidth = bitmap.width
+                    imageHeight = bitmap.height
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier

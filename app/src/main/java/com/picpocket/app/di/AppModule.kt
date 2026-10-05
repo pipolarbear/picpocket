@@ -82,5 +82,6 @@ object AppModule {
         com.picpocket.app.domain.export.RoutingPdfGenerator(
             SearchablePdfGenerator(ocrEngine),
             com.picpocket.app.domain.export.NativePdfExporter(),
+            com.picpocket.app.domain.render.PageRenderer(),
         )
 }
