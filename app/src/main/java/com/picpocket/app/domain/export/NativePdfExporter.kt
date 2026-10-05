@@ -60,6 +60,7 @@ class NativePdfExporter @Inject constructor() {
         val outDoc = PDDocument()
         return try {
             var index = 0
+            var dropped = 0
             while (index < pages.size) {
                 val page = pages[index]
                 if (page.kind == PageKind.PDF) {
@@ -71,17 +72,24 @@ class NativePdfExporter @Inject constructor() {
                             val pageIndex = pages[index].pdfPageIndex
                             if (pageIndex in 0 until srcDoc.numberOfPages) {
                                 outDoc.importPage(srcDoc.getPage(pageIndex))
+                            } else {
+                                dropped++
                             }
                             index++
                         }
                     }
                 } else {
-                    appendImagePage(context, outDoc, page)
+                    if (!appendImagePage(context, outDoc, page)) dropped++
                     index++
                 }
             }
-            context.contentResolver.openOutputStream(outputUri)?.use { out -> outDoc.save(out) }
-            true
+            if (dropped > 0) {
+                false
+            } else {
+                val out = context.contentResolver.openOutputStream(outputUri) ?: return false
+                out.use { outDoc.save(it) }
+                true
+            }
         } catch (e: Exception) {
             false
         } finally {
@@ -89,10 +97,10 @@ class NativePdfExporter @Inject constructor() {
         }
     }
 
-    private fun appendImagePage(context: Context, outDoc: PDDocument, page: Page) {
+    private fun appendImagePage(context: Context, outDoc: PDDocument, page: Page): Boolean {
         val bitmap = context.contentResolver.openInputStream(Uri.parse(page.imageUri))?.use { stream ->
             android.graphics.BitmapFactory.decodeStream(stream)
-        } ?: return
+        } ?: return false
         val bytes = ByteArrayOutputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
             bitmap.recycle()
@@ -106,6 +114,7 @@ class NativePdfExporter @Inject constructor() {
         PDPageContentStream(outDoc, pdfPage).use { content ->
             content.drawImage(image, 0f, 0f, width, height)
         }
+        return true
     }
 
     private fun sourceFile(page: Page): File = File(URI(page.imageUri))

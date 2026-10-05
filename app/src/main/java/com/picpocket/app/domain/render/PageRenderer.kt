@@ -18,24 +18,19 @@ import javax.inject.Singleton
 /**
  * Produces a bitmap for a page, whatever backs it: an image file, or a page of a
  * stored PDF (rendered via the platform PdfRenderer). Runs off the main thread;
- * PDF rendering is serialized per source file because a PdfRenderer is not
- * reentrant.
+ * PDF rendering is serialized because a PdfRenderer is not reentrant and PDFium
+ * is single-threaded in-process.
  */
 @Singleton
 class PageRenderer @Inject constructor() {
 
-    private val locks = mutableMapOf<String, Mutex>()
-    private val lockGuard = Mutex()
-
-    private suspend fun lockFor(path: String): Mutex = lockGuard.withLock {
-        locks.getOrPut(path) { Mutex() }
-    }
+    private val pdfRenderMutex = Mutex()
 
     suspend fun render(file: File, kind: PageKind, pdfPageIndex: Int, targetWidth: Int): Bitmap? {
         if (!file.exists()) return null
         return when (kind) {
             PageKind.IMAGE -> withContext(Dispatchers.IO) { decodeImage(file, targetWidth) }
-            PageKind.PDF -> lockFor(file.absolutePath).withLock {
+            PageKind.PDF -> pdfRenderMutex.withLock {
                 withContext(Dispatchers.IO) { renderPdfPage(file, pdfPageIndex, targetWidth) }
             }
         }

@@ -136,7 +136,7 @@ class UploadEngineTest {
     }
 
     @Test
-    fun `uploadNewDocument uploads a shared native pdf source`() = runTest {
+    fun `uploadNewDocument uploads a shared native pdf source once`() = runTest {
         val d = doc(
             "doc-1",
             listOf(
@@ -155,6 +155,6 @@ class UploadEngineTest {
         val result = uploadEngine.uploadNewDocument("doc-1")
 
         assertTrue(result)
-        coVerify { driveFileManager.writeFile(any(), any(), eq("source.pdf"), any()) }
+        coVerify(exactly = 1) { driveFileManager.writeFile(any(), any(), eq("source.pdf"), any()) }
     }
 }

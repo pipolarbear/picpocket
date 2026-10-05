@@ -101,4 +101,17 @@ class NativePdfExporterTest {
         assertTrue(exporter.isUnchangedSingleSource(listOf(nativePage(two, 0, 1), nativePage(two, 1, 2))))
         assertFalse(exporter.isUnchangedSingleSource(listOf(nativePage(a, 0, 1), nativePage(b, 0, 2))))
     }
+
+    @Test
+    fun mergeFailsWhenAPageIndexIsOutOfRange() {
+        val a = pdf(pages = 1)
+        val pages = listOf(nativePage(a, 5, 1)) // page 5 does not exist in a 1-page source
+        val out = File.createTempFile("out", ".pdf")
+
+        val ok = runBlocking {
+            NativePdfExporter().export(app, pages, Uri.fromFile(out), copyWhenUnchanged = false)
+        }
+
+        assertFalse(ok)
+    }
 }

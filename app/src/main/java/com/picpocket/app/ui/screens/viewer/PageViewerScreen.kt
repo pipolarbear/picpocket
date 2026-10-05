@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -176,6 +177,7 @@ private fun ZoomablePage(page: Page, loadBitmap: (suspend (Int) -> android.graph
                 delay(250)
                 val bitmap = withContext(Dispatchers.IO) { loadBitmap(target) }
                 if (bitmap != null) {
+                    renderedBitmap?.recycle()
                     renderedBitmap = bitmap
                     renderWidth = target
                     imageWidth = bitmap.width
@@ -255,6 +257,15 @@ private fun ZoomablePage(page: Page, loadBitmap: (suspend (Int) -> android.graph
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
+        } else if (page.kind == com.picpocket.app.data.model.PageKind.PDF && loadBitmap != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(32.dp))
+            }
         } else {
             SubcomposeAsyncImage(
                 model = page.imageUri,

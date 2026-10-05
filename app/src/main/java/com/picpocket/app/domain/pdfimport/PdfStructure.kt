@@ -65,4 +65,23 @@ class PdfStructure @Inject constructor() {
     } catch (e: Exception) {
         emptyList()
     }
+
+    /**
+     * Extracts each page's text in a single pass, or returns null when no page
+     * has text (an image-only PDF). Lets import detect born-digital and extract
+     * without loading the document twice.
+     */
+    fun pageTextsOrNull(file: File): List<String>? = try {
+        PDDocument.load(file).use { doc ->
+            val stripper = PDFTextStripper().apply { sortByPosition = true }
+            val texts = (1..doc.numberOfPages).map { page ->
+                stripper.startPage = page
+                stripper.endPage = page
+                stripper.getText(doc).trim()
+            }
+            if (texts.isEmpty() || texts.all { it.isBlank() }) null else texts
+        }
+    } catch (e: Exception) {
+        null
+    }
 }

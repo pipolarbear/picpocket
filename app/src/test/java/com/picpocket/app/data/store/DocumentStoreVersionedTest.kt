@@ -143,4 +143,26 @@ class DocumentStoreVersionedTest {
         store.removePage(doc.id, 1)
         assertTrue("file deleted when the last reference is removed", !file.exists())
     }
+
+    @Test
+    fun `replacePageImage converts a native page back to an image`() = runTest {
+        val doc = store.createDocument("Doc").getOrThrow()
+        store.appendPage(doc.id, "source.pdf", fileSizeBytes = 10L, kind = PageKind.PDF, pdfPageIndex = 0)
+
+        store.replacePageImage(doc.id, 1, "new.jpg", 20L).getOrThrow()
+
+        val page = store.readMetadata(doc.id).getOrThrow().pages.first()
+        assertEquals(PageKind.IMAGE, page.kind)
+        assertEquals(0, page.pdfPageIndex)
+        assertEquals("new.jpg", page.filename)
+    }
+
+    @Test
+    fun `totalFileSize counts a shared source once`() = runTest {
+        val doc = store.createDocument("Doc").getOrThrow()
+        store.appendPage(doc.id, "shared.pdf", fileSizeBytes = 100L, kind = PageKind.PDF, pdfPageIndex = 0)
+        store.appendPage(doc.id, "shared.pdf", fileSizeBytes = 100L, kind = PageKind.PDF, pdfPageIndex = 1)
+
+        assertEquals(100L, store.totalFileSize(doc.id).getOrThrow())
+    }
 }

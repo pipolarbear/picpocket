@@ -312,12 +312,8 @@ class DocumentRepositoryImpl @Inject constructor(
                 false
             }
 
-            if (copied && pdfStructure.hasText(tempSource)) {
-                val texts = pdfStructure.pageTexts(tempSource)
-                if (texts.isEmpty()) {
-                    store.deleteDocument(doc.id)
-                    throw Exception("Selected PDF has no pages")
-                }
+            val texts = if (copied) pdfStructure.pageTextsOrNull(tempSource) else null
+            if (texts != null) {
                 val filename = PageNaming.filenameFor(tempSource, "pdf")
                 val dest = File(targetDir, filename)
                 if (dest.exists()) dest.delete()
@@ -546,7 +542,7 @@ class DocumentRepositoryImpl @Inject constructor(
             createdAt = createdAt,
             updatedAt = updatedAt,
             pageCount = pages.size,
-            totalFileSize = pages.sumOf { it.fileSizeBytes },
+            totalFileSize = pages.distinctBy { it.filename }.sumOf { it.fileSizeBytes },
             qualityTier = qualityTier,
             ocrComplete = ocrComplete,
             pageSize = pageSize,

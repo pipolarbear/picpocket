@@ -628,7 +628,15 @@ private fun PageThumbnail(
                     androidx.compose.foundation.Image(
                         bitmap = image,
                         contentDescription = "Page $pageNumber",
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(
+                                if (!isEditMode) Modifier.combinedClickable(
+                                    onClick = {},
+                                    onLongClick = null,
+                                    onDoubleClick = onView,
+                                ) else Modifier
+                            ),
                         contentScale = ContentScale.Fit,
                     )
                 } else {

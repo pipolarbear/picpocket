@@ -1,9 +1,11 @@
 package com.picpocket.app.domain.ocr
 
 import android.graphics.BitmapFactory
+import com.picpocket.app.data.model.PageKind
 import com.picpocket.app.data.store.DocumentStore
 import com.picpocket.app.debug.Category
 import com.picpocket.app.debug.Tracing
+import com.picpocket.app.domain.render.PageRenderer
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
@@ -13,6 +15,7 @@ import javax.inject.Singleton
 class OcrManager @Inject constructor(
     private val ocrEngine: OcrEngine,
     private val store: DocumentStore,
+    private val pageRenderer: PageRenderer = PageRenderer(),
 ) {
 
     private val _metadataChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -25,7 +28,11 @@ class OcrManager @Inject constructor(
         if (pending.isEmpty()) return
         for (page in pending) {
             val pageFile = store.pageFile(documentId, page.filename)
-            val bitmap = BitmapFactory.decodeFile(pageFile.absolutePath)
+            val bitmap = if (page.kind == PageKind.PDF) {
+                pageRenderer.render(pageFile, PageKind.PDF, page.pdfPageIndex, 2400)
+            } else {
+                BitmapFactory.decodeFile(pageFile.absolutePath)
+            }
             if (bitmap == null) {
                 Tracing.w(Category.OCR, "OcrManager", "decode failed for page ${page.pageNumber} of $documentId")
                 store.updatePageOcrText(documentId, page.pageNumber, "")

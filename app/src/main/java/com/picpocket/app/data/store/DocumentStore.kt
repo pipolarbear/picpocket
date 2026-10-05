@@ -350,6 +350,8 @@ class DocumentStore @Inject constructor(
                 filename = filename,
                 fileSizeBytes = fileSizeBytes,
                 ocrText = null,
+                kind = PageKind.IMAGE,
+                pdfPageIndex = 0,
             )
             writeMetadataTo(
                 documentId,
@@ -366,7 +368,8 @@ class DocumentStore @Inject constructor(
 
     suspend fun totalFileSize(documentId: String): Result<Long> = withContext(Dispatchers.IO) {
         val doc = readMetadata(documentId).getOrElse { return@withContext Result.failure(it) }
-        Result.success(doc.pages.sumOf { it.fileSizeBytes })
+        // A native document shares one source file across pages; count each file once.
+        Result.success(doc.pages.distinctBy { it.filename }.sumOf { it.fileSizeBytes })
     }
 
     suspend fun replacePages(documentId: String, keptFilenames: List<String>): Result<List<String>> = withContext(Dispatchers.IO) {

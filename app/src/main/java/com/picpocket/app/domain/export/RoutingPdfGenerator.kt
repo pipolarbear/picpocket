@@ -8,6 +8,8 @@ import com.picpocket.app.data.model.PageKind
 import com.picpocket.app.domain.render.PageRenderer
 import java.io.File
 import java.net.URI
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Chooses how to export: documents with native PDF pages are copied or merged
@@ -15,8 +17,9 @@ import java.net.URI
  * If native export fails, native pages are rasterized at high DPI so the export
  * can still complete through the image generator.
  */
-class RoutingPdfGenerator(
-    private val searchable: PdfGenerator,
+@Singleton
+class RoutingPdfGenerator @Inject constructor(
+    private val searchable: SearchablePdfGenerator,
     private val native: NativePdfExporter,
     private val pageRenderer: PageRenderer,
 ) : PdfGenerator {
@@ -35,6 +38,7 @@ class RoutingPdfGenerator(
             if (rasterized != null) {
                 return searchable.generate(context, rasterized, outputUri, pageSize)
             }
+            return PdfResult.Error(Exception("Could not export the document"))
         }
         return searchable.generate(context, pages, outputUri, pageSize)
     }
