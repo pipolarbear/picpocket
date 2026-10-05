@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import coil.compose.SubcomposeAsyncImage
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.input.pointer.pointerInput
@@ -133,7 +134,7 @@ fun PageViewerScreen(
                         }
                     },
             ) {
-                ZoomablePage(page = page)
+                ZoomablePage(page = page, loadBitmap = { width -> viewModel.renderPage(page, width) })
             }
         }
     }
@@ -141,18 +142,28 @@ fun PageViewerScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ZoomablePage(page: Page) {
+private fun ZoomablePage(page: Page, loadBitmap: (suspend (Int) -> android.graphics.Bitmap?)? = null) {
     var imageWidth by remember(page.imageUri) { mutableIntStateOf(0) }
     var imageHeight by remember(page.imageUri) { mutableIntStateOf(0) }
+    var renderedBitmap by remember(page.imageUri) { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     LaunchedEffect(page.imageUri) {
-        withContext(Dispatchers.IO) {
-            val path = Uri.parse(page.imageUri).path
-            if (path != null) {
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(path, opts)
-                imageWidth = opts.outWidth
-                imageHeight = opts.outHeight
+        if (page.kind == com.picpocket.app.data.model.PageKind.PDF && loadBitmap != null) {
+            val bitmap = withContext(Dispatchers.IO) { loadBitmap(1600) }
+            renderedBitmap = bitmap
+            if (bitmap != null) {
+                imageWidth = bitmap.width
+                imageHeight = bitmap.height
+            }
+        } else {
+            withContext(Dispatchers.IO) {
+                val path = Uri.parse(page.imageUri).path
+                if (path != null) {
+                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(path, opts)
+                    imageWidth = opts.outWidth
+                    imageHeight = opts.outHeight
+                }
             }
         }
     }
@@ -225,21 +236,31 @@ private fun ZoomablePage(page: Page) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        SubcomposeAsyncImage(
-            model = page.imageUri,
-            contentDescription = "Page ${page.pageNumber}",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
-            error = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Failed to load page", style = MaterialTheme.typography.bodyMedium)
-                }
-            },
-        )
+        val bitmap = renderedBitmap
+        if (bitmap != null) {
+            androidx.compose.foundation.Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Page ${page.pageNumber}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            SubcomposeAsyncImage(
+                model = page.imageUri,
+                contentDescription = "Page ${page.pageNumber}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                error = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Failed to load page", style = MaterialTheme.typography.bodyMedium)
+                    }
+                },
+            )
+        }
     }
 }

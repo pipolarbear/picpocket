@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -282,12 +283,35 @@ private fun SourceRail(state: DetailUiState, viewModel: DocumentDetailViewModel)
                             .draggableHandle(),
                         shape = RoundedCornerShape(4.dp),
                     ) {
-                        SubcomposeAsyncImage(
-                            model = page.imageUri,
-                            contentDescription = "Source ${index + 1}",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        if (page.kind == com.picpocket.app.data.model.PageKind.PDF) {
+                            val bmp by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(
+                                initialValue = null,
+                                page.filename,
+                                page.pdfPageIndex,
+                            ) {
+                                value = viewModel.pageThumbnail(page)?.asImageBitmap()
+                            }
+                            val image = bmp
+                            if (image != null) {
+                                androidx.compose.foundation.Image(
+                                    bitmap = image,
+                                    contentDescription = "Source ${index + 1}",
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        } else {
+                            SubcomposeAsyncImage(
+                                model = page.imageUri,
+                                contentDescription = "Source ${index + 1}",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                     Text("${index + 1}", style = MaterialTheme.typography.labelSmall)
                 }

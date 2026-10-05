@@ -23,6 +23,8 @@ import com.picpocket.app.domain.collate.CollatePlacement
 import com.picpocket.app.domain.ocr.OcrManager
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.export.PdfGenerator
+import com.picpocket.app.domain.render.PageRenderer
+import com.picpocket.app.domain.render.PageThumbCache
 import com.picpocket.app.domain.scanner.ScannerManager
 import com.picpocket.app.domain.scanner.ScannerResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +44,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
 import javax.inject.Inject
+
+private const val COLLATE_RENDER_WIDTH = 1600
 
 data class DetailUiState(
     val document: Document? = null,
@@ -93,6 +97,8 @@ class DocumentDetailViewModel @Inject constructor(
     @SearchablePdf private val searchablePdfGenerator: PdfGenerator,
     private val ocrManager: OcrManager,
     private val scannerManager: ScannerManager,
+    private val pageRenderer: PageRenderer = PageRenderer(),
+    private val pageThumbCache: PageThumbCache? = null,
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(DetailUiState())
@@ -519,6 +525,18 @@ class DocumentDetailViewModel @Inject constructor(
 
     // --- Collate: merge selected pages into one continuous image ---
 
+    /** Renders a page for list display (PDF pages need on-demand rendering). */
+    suspend fun pageThumbnail(page: Page): Bitmap? {
+        val cache = pageThumbCache
+        if (cache != null) return cache.thumbnail(page)
+        return pageRenderer.render(
+            File(java.net.URI(page.imageUri)),
+            page.kind,
+            page.pdfPageIndex,
+            400,
+        )
+    }
+
     private var collateSources: List<Bitmap> = emptyList()
     private var collatePlacements: List<CollatePlacement> = emptyList()
     private var collateAxis: CollateAxis = CollateAxis.VERTICAL
@@ -608,8 +626,12 @@ class DocumentDetailViewModel @Inject constructor(
             val outcome = withContext(Dispatchers.Default) {
                 runCatching {
                     val bitmaps = selected.mapNotNull { page ->
-                        val path = Uri.parse(page.imageUri).path
-                        if (path != null) BitmapFactory.decodeFile(path) else null
+                        pageRenderer.render(
+                            File(java.net.URI(page.imageUri)),
+                            page.kind,
+                            page.pdfPageIndex,
+                            COLLATE_RENDER_WIDTH,
+                        )
                     }
                     if (bitmaps.size != selected.size) return@runCatching null
                     val resolved = Collate.place(bitmaps, state.collateLayout)

@@ -80,6 +80,8 @@ import coil.compose.SubcomposeAsyncImage
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.picpocket.app.data.model.DocumentId
+import com.picpocket.app.data.model.PageKind
+import androidx.compose.ui.graphics.asImageBitmap
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.scan.QualityTier
 import com.picpocket.app.ui.components.ShareOptionsSheet
@@ -385,6 +387,9 @@ fun DocumentDetailScreen(
                                 PageThumbnail(
                                     imageUri = page.imageUri,
                                     pageNumber = index + 1,
+                                    pageKind = page.kind,
+                                    pdfPageIndex = page.pdfPageIndex,
+                                    loadBitmap = { viewModel.pageThumbnail(page) },
                                     ocrText = page.ocrText,
                                     isEditMode = state.isEditMode,
                                     isMarkedForDeletion = page.filename in state.markedForDeletion,
@@ -591,6 +596,9 @@ fun DocumentDetailScreen(
 private fun PageThumbnail(
     imageUri: String,
     pageNumber: Int,
+    pageKind: PageKind = PageKind.IMAGE,
+    pdfPageIndex: Int = 0,
+    loadBitmap: (suspend () -> android.graphics.Bitmap?)? = null,
     ocrText: String? = null,
     isEditMode: Boolean = false,
     isMarkedForDeletion: Boolean = false,
@@ -606,30 +614,59 @@ private fun PageThumbnail(
             .aspectRatio(0.7f),
     ) {
         Box {
-            SubcomposeAsyncImage(
-                model = imageUri,
-                contentDescription = "Page $pageNumber",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (!isEditMode) Modifier.combinedClickable(
-                            onClick = {},
-                            onLongClick = null,
-                            onDoubleClick = onView,
-                        ) else Modifier
-                    ),
-                contentScale = ContentScale.Fit,
-                error = {
+            if (pageKind == PageKind.PDF && loadBitmap != null) {
+                val rendered by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(
+                    initialValue = null,
+                    pageKind,
+                    pdfPageIndex,
+                    imageUri,
+                ) {
+                    value = loadBitmap.invoke()?.asImageBitmap()
+                }
+                val image = rendered
+                if (image != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = image,
+                        contentDescription = "Page $pageNumber",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("Failed to load", style = MaterialTheme.typography.labelSmall)
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
                     }
-                },
-            )
+                }
+            } else {
+                SubcomposeAsyncImage(
+                    model = imageUri,
+                    contentDescription = "Page $pageNumber",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (!isEditMode) Modifier.combinedClickable(
+                                onClick = {},
+                                onLongClick = null,
+                                onDoubleClick = onView,
+                            ) else Modifier
+                        ),
+                    contentScale = ContentScale.Fit,
+                    error = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("Failed to load", style = MaterialTheme.typography.labelSmall)
+                        }
+                    },
+                )
+            }
             if (isMarkedForDeletion) {
                 Box(
                     modifier = Modifier
