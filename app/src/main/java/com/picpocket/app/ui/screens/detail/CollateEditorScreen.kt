@@ -270,7 +270,7 @@ private fun SourceRail(state: DetailUiState, viewModel: DocumentDetailViewModel)
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        itemsIndexed(pages, key = { _, page -> page.pageNumber }) { index, page ->
+        itemsIndexed(pages, key = { _, page -> "${page.filename}#${page.createdAt}" }) { index, page ->
             ReorderableItem(reorderState, key = page.pageNumber) { _ ->
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,

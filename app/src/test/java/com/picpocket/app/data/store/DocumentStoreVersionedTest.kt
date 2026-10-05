@@ -3,6 +3,7 @@ package com.picpocket.app.data.store
 import androidx.test.core.app.ApplicationProvider
 import com.picpocket.app.util.MainCoroutineRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -91,5 +92,39 @@ class DocumentStoreVersionedTest {
         assertEquals(PageNaming.filenameFor(bytes), name)
         store.addPage(doc.id, pageNumber = 1, filename = name, fileSizeBytes = 10L)
         assertEquals(name, store.readMetadata(doc.id).getOrThrow().pages.first().filename)
+    }
+
+    @Test
+    fun `concurrent appends never duplicate a page number`() = runTest {
+        val doc = store.createDocument("Doc").getOrThrow()
+        (1..20).map { index ->
+            launch { store.appendPage(doc.id, "page$index.jpg", fileSizeBytes = 10L) }
+        }.forEach { it.join() }
+
+        val numbers = store.readMetadata(doc.id).getOrThrow().pages.map { it.pageNumber }
+        assertEquals(20, numbers.size)
+        assertEquals((1..20).toList(), numbers.sorted())
+        assertEquals(20, numbers.toSet().size)
+    }
+
+    @Test
+    fun `addPage reassigns a duplicate explicit page number`() = runTest {
+        val doc = store.createDocument("Doc").getOrThrow()
+        store.addPage(doc.id, pageNumber = 1, filename = "a.jpg", fileSizeBytes = 1L)
+        store.addPage(doc.id, pageNumber = 1, filename = "b.jpg", fileSizeBytes = 1L)
+
+        val pages = store.readMetadata(doc.id).getOrThrow().pages
+        assertEquals(listOf(1, 2), pages.map { it.pageNumber })
+    }
+
+    @Test
+    fun `reading renumbers non-sequential page numbers`() = runTest {
+        val doc = store.createDocument("Doc").getOrThrow()
+        doc.pages.add(StoredPage(pageNumber = 1, filename = "a.jpg", createdAt = 1L))
+        doc.pages.add(StoredPage(pageNumber = 5, filename = "b.jpg", createdAt = 2L))
+        store.writeMetadataAt(doc.id, doc, 1, 0)
+
+        val pages = store.readMetadata(doc.id).getOrThrow().pages
+        assertEquals(listOf(1, 2), pages.map { it.pageNumber })
     }
 }

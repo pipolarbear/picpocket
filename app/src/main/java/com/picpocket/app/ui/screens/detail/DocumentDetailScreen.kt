@@ -378,8 +378,8 @@ fun DocumentDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(verticalSpacing),
                     contentPadding = PaddingValues(4.dp),
                 ) {
-                        items(state.reorderablePages, key = { it.id }) { page ->
-                            ReorderableItem(reorderableState, key = page.id) { _ ->
+                        items(state.reorderablePages, key = { "${it.filename}#${it.createdAt}" }) { page ->
+                            ReorderableItem(reorderableState, key = "${page.filename}#${page.createdAt}") { _ ->
                                 val index = state.reorderablePages.indexOf(page)
                                 val itemModifier = if (state.isEditMode) Modifier.draggableHandle() else Modifier
                                 PageThumbnail(
@@ -663,7 +663,7 @@ private fun PageThumbnail(
                 IconButton(
                     onClick = onRescan,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
+                        .align(Alignment.BottomStart)
                         .size(32.dp)
                         .padding(4.dp)
                         .background(
