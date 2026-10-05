@@ -22,6 +22,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -35,6 +37,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TriStateCheckbox
@@ -51,6 +55,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,20 +68,10 @@ import com.picpocket.app.domain.workflow.model.CompareOp
 import com.picpocket.app.domain.workflow.model.Condition
 import com.picpocket.app.domain.workflow.model.NodeStatus
 import com.picpocket.app.domain.workflow.model.TriggerEvent
+import com.picpocket.app.domain.workflow.model.RunStatus
 import com.picpocket.app.domain.workflow.model.WorkflowApps
-
-private val TRIGGER_LABELS = mapOf(
-    TriggerEvent.DOC_CREATED to "Created",
-    TriggerEvent.PAGES_ADDED to "Pages added",
-    TriggerEvent.PAGE_RESCANNED to "Page rescanned",
-    TriggerEvent.PAGE_REMOVED to "Page removed",
-    TriggerEvent.PAGES_REORDERED to "Pages reordered",
-    TriggerEvent.RENAMED to "Renamed",
-    TriggerEvent.TAGGED to "Tagged",
-    TriggerEvent.UNTAGGED to "Untagged",
-    TriggerEvent.META_CHANGED to "Meta changed",
-    TriggerEvent.DELETED to "Deleted",
-)
+import java.text.DateFormat
+import java.util.Date
 
 private val COMPARE_LABELS = mapOf(
     CompareOp.GE to "≥",
@@ -120,14 +116,77 @@ fun WorkflowEditorContent(
         folderTargetNodeId = null
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 32.dp),
-    ) {
+    // Transient messages (saved, run result, validation) surface as a Snackbar
+    // instead of a line of text that scrolls away.
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        viewModel.consumeMessage()
+    }
+
+    Box(modifier = Modifier.fillMaxWidth().navigationBarsPadding()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 16.dp),
+            ) {
+                EditorBody(
+                    state = state,
+                    viewModel = viewModel,
+                    showAddRootMenu = showAddRootMenu,
+                    onShowAddRootMenu = { showAddRootMenu = it },
+                    onPickFolder = {
+                        folderTargetNodeId = it
+                        folderPicker.launch(null)
+                    },
+                )
+            }
+            // Save / Run stay visible no matter how long the editor gets.
+            HorizontalDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(onClick = viewModel::save) { Text("Save") }
+                OutlinedButton(onClick = viewModel::runNow) { Text("Run now") }
+                Spacer(Modifier.weight(1f))
+                state.runs.firstOrNull()?.let { run ->
+                    Text(
+                        "Last run: ${runStatusLabel(run.status)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (run.status == RunStatus.SUCCESS) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    )
+                }
+            }
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp),
+        )
+    }
+}
+
+@Composable
+private fun EditorBody(
+    state: WorkflowEditorUiState,
+    viewModel: WorkflowEditorViewModel,
+    showAddRootMenu: Boolean,
+    onShowAddRootMenu: (Boolean) -> Unit,
+    onPickFolder: (String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text("Workflow", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(12.dp))
 
@@ -148,6 +207,14 @@ fun WorkflowEditorContent(
                 onToggle = viewModel::toggleTrigger,
                 onSelectAll = viewModel::setAllTriggers,
             )
+            if (state.workflow.triggers.isEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "No events selected — this workflow only runs when you tap Run now.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Section(
@@ -182,40 +249,25 @@ fun WorkflowEditorContent(
                     node = node,
                     nodeErrors = state.nodeErrors,
                     viewModel = viewModel,
-                    onPickFolder = {
-                        folderTargetNodeId = it
-                        folderPicker.launch(null)
-                    },
+                    onPickFolder = onPickFolder,
                 )
             }
             Spacer(Modifier.height(8.dp))
             OutlinedIconButton(
-                onClick = { showAddRootMenu = true },
+                onClick = { onShowAddRootMenu(true) },
                 modifier = Modifier.testTag("add_action"),
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add action")
             }
-            DropdownMenu(expanded = showAddRootMenu, onDismissRequest = { showAddRootMenu = false }) {
+            DropdownMenu(expanded = showAddRootMenu, onDismissRequest = { onShowAddRootMenu(false) }) {
                 // Terminal actions (delete) cannot be a top-level action.
                 ActionType.entries.filterNot { it.terminal }.forEach { type ->
                     DropdownMenuItem(
-                        text = { Text(type.value) },
-                        onClick = { viewModel.addRoot(type); showAddRootMenu = false },
+                        text = { Text(type.label) },
+                        onClick = { viewModel.addRoot(type); onShowAddRootMenu(false) },
                     )
                 }
             }
-        }
-
-        HorizontalDivider()
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = viewModel::save) { Text("Save") }
-            OutlinedButton(onClick = viewModel::runNow) { Text("Run now") }
-        }
-
-        state.runs.firstOrNull()?.let { run ->
-            Spacer(Modifier.height(8.dp))
-            Text("Last run: ${run.status}", style = MaterialTheme.typography.bodySmall)
         }
 
         if (state.runs.isNotEmpty()) {
@@ -231,26 +283,33 @@ fun WorkflowEditorContent(
                 TextButton(onClick = viewModel::clearHistory) { Text("Clear") }
             }
             state.runs.forEach { run ->
+                val finished = run.finishedAt.let { if (it > 0) DateFormat.getTimeInstance().format(Date(it)) else "" }
                 Text(
-                    "${run.status} · ${run.trigger.value}",
+                    "${runStatusLabel(run.status)} · ${run.trigger.label} · $finished",
                     style = MaterialTheme.typography.bodySmall,
+                    color = if (run.status == RunStatus.SUCCESS) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
                 )
                 run.nodes.forEach { node ->
                     val mark = if (node.status == NodeStatus.FAILED) "✗" else "✓"
+                    val duration = node.durationMs.takeIf { it > 0 }?.let { " (${it}ms)" } ?: ""
                     Text(
-                        "  $mark ${node.type.value}${node.reason?.let { ": $it" } ?: ""}",
+                        "  $mark ${node.type.label}$duration${node.reason?.let { ": $it" } ?: ""}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
         }
-
-        state.message?.let { message ->
-            Spacer(Modifier.height(8.dp))
-            Text(message, style = MaterialTheme.typography.bodySmall)
-            LaunchedEffect(message) { viewModel.consumeMessage() }
-        }
     }
+}
+
+private fun runStatusLabel(status: RunStatus): String = when (status) {
+    RunStatus.SUCCESS -> "Succeeded"
+    RunStatus.PARTIAL_FAILURE -> "Partially failed"
+    RunStatus.FAILURE -> "Failed"
 }
 
 @Composable
@@ -314,7 +373,7 @@ private fun TriggerTree(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = event in selected, onCheckedChange = { onToggle(event) })
                     Text(
-                        TRIGGER_LABELS[event] ?: event.value,
+                        event.label,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -469,7 +528,7 @@ private fun ActionNodeRow(
     Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                node.type.value,
+                node.type.label,
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -484,7 +543,7 @@ private fun ActionNodeRow(
                 }
                 DropdownMenu(expanded = addChild, onDismissRequest = { addChild = false }) {
                     ActionType.entries.forEach { type ->
-                        DropdownMenuItem(text = { Text(type.value) }, onClick = {
+                        DropdownMenuItem(text = { Text(type.label) }, onClick = {
                             viewModel.addChild(node.id, type); addChild = false
                         })
                     }
@@ -519,13 +578,29 @@ private fun NodeParamsEditor(
     onPickFolder: (String) -> Unit,
 ) {
     when (val params = node.params) {
-        is ActionParams.Encrypt -> OutlinedTextField(
-            value = params.passphrase,
-            onValueChange = { viewModel.setNodeParams(node.id, ActionParams.Encrypt(it)) },
-            label = { Text("Passphrase") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        is ActionParams.Encrypt -> {
+            var passphraseVisible by remember { mutableStateOf(false) }
+            OutlinedTextField(
+                value = params.passphrase,
+                onValueChange = { viewModel.setNodeParams(node.id, ActionParams.Encrypt(it)) },
+                label = { Text("Passphrase") },
+                singleLine = true,
+                visualTransformation = if (passphraseVisible) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                trailingIcon = {
+                    IconButton(onClick = { passphraseVisible = !passphraseVisible }) {
+                        Icon(
+                            imageVector = if (passphraseVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (passphraseVisible) "Hide passphrase" else "Show passphrase",
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         is ActionParams.Notify -> OutlinedTextField(
             value = params.message,
             onValueChange = { viewModel.setNodeParams(node.id, ActionParams.Notify(it)) },

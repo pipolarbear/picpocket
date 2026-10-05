@@ -16,6 +16,11 @@ data class WorkflowsUiState(
     val workflows: List<Workflow> = emptyList(),
     val showEditor: Boolean = false,
     val editorWorkflowId: Long? = null,
+    /** Set when the user tapped delete but has not confirmed yet. */
+    val pendingDelete: Workflow? = null,
+    /** A workflow just deleted, offered for undo. */
+    val lastDeleted: Workflow? = null,
+    val message: String? = null,
 )
 
 @HiltViewModel
@@ -40,9 +45,36 @@ class WorkflowsViewModel @Inject constructor(
 
     fun closeEditor() = _uiState.update { it.copy(showEditor = false, editorWorkflowId = null) }
 
-    fun delete(id: Long) {
-        viewModelScope.launch { workflowRepository.delete(id) }
+    /** Asks for confirmation before deleting; [delete] performs the delete. */
+    fun requestDelete(workflow: Workflow) =
+        _uiState.update { it.copy(pendingDelete = workflow) }
+
+    fun cancelDelete() = _uiState.update { it.copy(pendingDelete = null) }
+
+    fun delete() {
+        val workflow = _uiState.value.pendingDelete ?: return
+        viewModelScope.launch {
+            workflowRepository.delete(workflow.id)
+            _uiState.update {
+                it.copy(
+                    pendingDelete = null,
+                    lastDeleted = workflow,
+                    message = "Deleted \"${workflow.name}\"",
+                )
+            }
+        }
     }
+
+    /** Restores the most recently deleted workflow (same id and rule). */
+    fun undoDelete() {
+        val workflow = _uiState.value.lastDeleted ?: return
+        viewModelScope.launch {
+            workflowRepository.save(workflow)
+            _uiState.update { it.copy(lastDeleted = null, message = null) }
+        }
+    }
+
+    fun consumeMessage() = _uiState.update { it.copy(message = null) }
 
     /** Duplicates a workflow (a copy named "<name> copy"); the copy is added to the list. */
     fun clone(id: Long) {

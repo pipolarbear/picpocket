@@ -52,4 +52,33 @@ class WorkflowsScreenTest {
         composeRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.workflows.size == 2 }
         composeRule.onNodeWithText("One copy").assertIsDisplayed()
     }
+
+    @Test
+    fun deleteConfirmsAndUndoRestores() {
+        runBlocking {
+            repo.save(
+                Workflow(
+                    name = "Gone",
+                    triggers = listOf(TriggerEvent.DOC_CREATED),
+                    roots = listOf(ActionNode("a", ActionType.ZIP)),
+                ),
+            )
+        }
+        val viewModel = WorkflowsViewModel(repo)
+        composeRule.setContent {
+            MaterialTheme {
+                WorkflowsScreen(onNavigateBack = {}, viewModel = viewModel)
+            }
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.workflows.isNotEmpty() }
+
+        composeRule.onNodeWithTag("delete_workflow").performClick()
+        composeRule.onNodeWithText("Delete workflow?").assertIsDisplayed()
+        composeRule.onNodeWithText("Delete").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.workflows.isEmpty() }
+
+        composeRule.onNodeWithText("Undo").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.workflows.isNotEmpty() }
+        composeRule.onNodeWithText("Gone").assertIsDisplayed()
+    }
 }

@@ -47,12 +47,11 @@ class WorkflowEditorViewModelTest {
     }
 
     @Test
-    fun `new workflow defaults to all selectable triggers`() {
+    fun `new workflow starts with no triggers`() {
         val vm = viewModel(RecordingAction(ActionType.ZIP))
         vm.load(null)
         assertTrue(vm.uiState.value.workflow.name.isNotBlank())
-        assertEquals(TriggerEvent.selectable, vm.uiState.value.workflow.triggers)
-        assertTrue(TriggerEvent.MANUAL !in vm.uiState.value.workflow.triggers)
+        assertTrue(vm.uiState.value.workflow.triggers.isEmpty())
     }
 
     @Test
