@@ -1,6 +1,7 @@
 package com.picpocket.app.data.store
 
 import android.app.Application
+import com.picpocket.app.data.model.PageKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +36,8 @@ data class StoredPage(
     val filterTypeOrdinal: Int = 0,
     val ocrText: String? = null,
     val createdAt: Long,
+    val kind: PageKind = PageKind.IMAGE,
+    val pdfPageIndex: Int = 0,
 )
 
 private fun StoredDocument.normalizedPages(): StoredDocument {
@@ -210,6 +213,9 @@ class DocumentStore @Inject constructor(
         fileSizeBytes: Long,
         filterTypeOrdinal: Int = 0,
         createdAt: Long = System.currentTimeMillis(),
+        kind: PageKind = PageKind.IMAGE,
+        pdfPageIndex: Int = 0,
+        ocrText: String? = null,
     ): Result<Int> = withContext(Dispatchers.IO) {
         mutex.withLock {
             val doc = readMetadata(documentId).getOrElse { return@withLock Result.failure(it) }
@@ -221,6 +227,9 @@ class DocumentStore @Inject constructor(
                     fileSizeBytes = fileSizeBytes,
                     filterTypeOrdinal = filterTypeOrdinal,
                     createdAt = createdAt,
+                    kind = kind,
+                    pdfPageIndex = pdfPageIndex,
+                    ocrText = ocrText,
                 ),
             )
             writeMetadataTo(
@@ -278,9 +287,7 @@ class DocumentStore @Inject constructor(
                 metadataVersion(documentId) + 1,
                 metadataPassphrase(documentId),
             ).getOrElse { return@withLock Result.failure(it) }
-            for (page in removed) {
-                pageFile(documentId, page.filename).delete()
-            }
+            deleteUnreferenced(documentId, removed, doc.pages)
             Result.success(Unit)
         }
     }
@@ -386,6 +393,7 @@ class DocumentStore @Inject constructor(
                 metadataPassphrase(documentId),
             )
             writeResult.getOrElse { return@withLock Result.failure(it) }
+            deleteUnreferenced(documentId, removed, updated)
             Result.success(removed.map { it.filename })
         }
     }
@@ -430,7 +438,7 @@ class DocumentStore @Inject constructor(
                 metadataPassphrase(documentId),
             ).getOrElse { return@withLock Result.failure(it) }
             if (removeSources) {
-                for (page in sources) pageFile(documentId, page.filename).delete()
+                deleteUnreferenced(documentId, sources, result)
             }
             Result.success(Unit)
         }
@@ -440,6 +448,41 @@ class DocumentStore @Inject constructor(
         mutex.withLock {
             val doc = readMetadata(documentId).getOrElse { return@withLock Result.failure(it) }
             writeMetadataTo(documentId, doc.copy(syncExclude = excluded), metadataVersion(documentId) + 1, metadataPassphrase(documentId))
+        }
+    }
+
+    /** Recomputes `ocrComplete` from whether every page has text. */
+    suspend fun refreshOcrComplete(documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val doc = readMetadata(documentId).getOrElse { return@withLock Result.failure(it) }
+            writeMetadataTo(
+                documentId,
+                doc.copy(ocrComplete = doc.pages.isNotEmpty() && doc.pages.all { it.ocrText != null }),
+                metadataVersion(documentId) + 1,
+                metadataPassphrase(documentId),
+            )
+        }
+    }
+
+    /** Deletes a page file only when no page still references it (shared PDF sources). */
+    suspend fun deleteFileIfUnreferenced(documentId: String, filename: String): Result<Unit> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val doc = readMetadata(documentId).getOrElse { return@withLock Result.failure(it) }
+            if (doc.pages.none { it.filename == filename }) {
+                pageFile(documentId, filename).delete()
+            }
+            Result.success(Unit)
+        }
+    }
+
+    private fun deleteUnreferenced(
+        documentId: String,
+        candidates: List<StoredPage>,
+        remaining: List<StoredPage>,
+    ) {
+        val referenced = remaining.map { it.filename }.toSet()
+        for (page in candidates) {
+            if (page.filename !in referenced) pageFile(documentId, page.filename).delete()
         }
     }
 

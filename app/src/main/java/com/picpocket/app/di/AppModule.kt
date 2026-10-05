@@ -79,5 +79,8 @@ object AppModule {
     @Singleton
     @SearchablePdf
     fun provideSearchablePdfGenerator(ocrEngine: OcrEngine): PdfGenerator =
-        SearchablePdfGenerator(ocrEngine)
+        com.picpocket.app.domain.export.RoutingPdfGenerator(
+            SearchablePdfGenerator(ocrEngine),
+            com.picpocket.app.domain.export.NativePdfExporter(),
+        )
 }

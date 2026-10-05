@@ -8,14 +8,17 @@ import android.provider.OpenableColumns
 import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
+import com.picpocket.app.data.model.PageKind
 import com.picpocket.app.data.model.Tag
 import com.picpocket.app.data.store.DocumentAccessStore
 import com.picpocket.app.data.store.DocumentStore
+import com.picpocket.app.data.store.PageNaming
 import com.picpocket.app.data.store.StoredDocument
 import com.picpocket.app.data.workflow.DocumentEvent
 import com.picpocket.app.data.workflow.DocumentEventBus
 import com.picpocket.app.domain.workflow.model.TriggerEvent
 import com.picpocket.app.domain.pdfimport.PdfPageImporter
+import com.picpocket.app.domain.pdfimport.PdfStructure
 import com.picpocket.app.domain.ocr.OcrManager
 import com.picpocket.app.domain.scan.PageEncoder
 import com.picpocket.app.domain.scan.QualityTier
@@ -40,6 +43,7 @@ class DocumentRepositoryImpl @Inject constructor(
     private val store: DocumentStore,
     private val tagDao: TagDao,
     private val pdfPageImporter: PdfPageImporter,
+    private val pdfStructure: PdfStructure,
     private val ocrManager: OcrManager,
     private val app: Application,
     private val eventBus: DocumentEventBus,
@@ -100,6 +104,8 @@ class DocumentRepositoryImpl @Inject constructor(
                     ocrText = sp.ocrText,
                     filterTypeOrdinal = sp.filterTypeOrdinal,
                     createdAt = sp.createdAt,
+                    kind = sp.kind,
+                    pdfPageIndex = sp.pdfPageIndex,
                 )
             }
         }
@@ -121,6 +127,8 @@ class DocumentRepositoryImpl @Inject constructor(
                     ocrText = sp.ocrText,
                     filterTypeOrdinal = sp.filterTypeOrdinal,
                     createdAt = sp.createdAt,
+                    kind = sp.kind,
+                    pdfPageIndex = sp.pdfPageIndex,
                 )
             }
         }
@@ -273,11 +281,7 @@ class DocumentRepositoryImpl @Inject constructor(
     }
 
     override suspend fun replacePages(documentId: DocumentId, keptFilenames: List<String>): Result<Unit> {
-        return store.replacePages(documentId, keptFilenames).mapCatching { orphaned ->
-            for (filename in orphaned) {
-                val file = store.pageFile(documentId, filename)
-                if (file.exists()) file.delete()
-            }
+        return store.replacePages(documentId, keptFilenames).mapCatching {
             scope.launch { refreshDocuments() }
             emit(TriggerEvent.PAGE_REMOVED, documentId)
         }
@@ -297,20 +301,53 @@ class DocumentRepositoryImpl @Inject constructor(
             val doc = store.createDocument(name = displayName).getOrThrow()
             val targetDir = store.documentDir(doc.id)
             val tier = readDefaultQualityTier()
-            val results = pdfPageImporter.import(contentResolver, uri, targetDir, tier).getOrThrow()
 
-            if (results.isEmpty()) {
-                store.deleteDocument(doc.id)
-                throw Exception("Selected PDF has no pages")
+            val tempSource = File(targetDir, "tmp_source_${System.nanoTime()}.pdf")
+            val copied = try {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    tempSource.outputStream().use { output -> input.copyTo(output) }
+                    true
+                } ?: false
+            } catch (e: Exception) {
+                false
             }
 
-            for (r in results) {
-                store.addPage(
-                    documentId = doc.id,
-                    pageNumber = r.pageNumber,
-                    filename = r.filename,
-                    fileSizeBytes = r.fileSizeBytes,
-                ).getOrThrow()
+            if (copied && pdfStructure.hasText(tempSource)) {
+                val texts = pdfStructure.pageTexts(tempSource)
+                if (texts.isEmpty()) {
+                    store.deleteDocument(doc.id)
+                    throw Exception("Selected PDF has no pages")
+                }
+                val filename = PageNaming.filenameFor(tempSource, "pdf")
+                val dest = File(targetDir, filename)
+                if (dest.exists()) dest.delete()
+                tempSource.renameTo(dest)
+                texts.forEachIndexed { index, text ->
+                    store.appendPage(
+                        documentId = doc.id,
+                        filename = filename,
+                        fileSizeBytes = dest.length(),
+                        kind = PageKind.PDF,
+                        pdfPageIndex = index,
+                        ocrText = text.ifBlank { null },
+                    ).getOrThrow()
+                }
+                store.refreshOcrComplete(doc.id)
+            } else {
+                if (tempSource.exists()) tempSource.delete()
+                val results = pdfPageImporter.import(contentResolver, uri, targetDir, tier).getOrThrow()
+                if (results.isEmpty()) {
+                    store.deleteDocument(doc.id)
+                    throw Exception("Selected PDF has no pages")
+                }
+                for (r in results) {
+                    store.addPage(
+                        documentId = doc.id,
+                        pageNumber = r.pageNumber,
+                        filename = r.filename,
+                        fileSizeBytes = r.fileSizeBytes,
+                    ).getOrThrow()
+                }
             }
 
             scope.launch { refreshDocuments() }
@@ -353,16 +390,16 @@ class DocumentRepositoryImpl @Inject constructor(
             val pageFile = store.pageFile(documentId, filename)
             tmp.renameTo(pageFile)
 
-            if (filename != oldFilename) {
-                store.pageFile(documentId, oldFilename).delete()
-            }
-
             store.replacePageImage(
                 documentId = documentId,
                 pageNumber = pageNumber,
                 filename = filename,
                 fileSizeBytes = pageFile.length(),
             ).getOrThrow()
+
+            if (filename != oldFilename) {
+                store.deleteFileIfUnreferenced(documentId, oldFilename)
+            }
 
             scope.launch { refreshDocuments() }
             scope.launch { ocrManager.runOcr(documentId) }

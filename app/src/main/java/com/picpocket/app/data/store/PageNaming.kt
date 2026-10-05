@@ -5,9 +5,10 @@ import java.security.MessageDigest
 
 object PageNaming {
 
-    fun filenameFor(bytes: ByteArray): String = hex(MessageDigest.getInstance("SHA-256").digest(bytes))
+    fun filenameFor(bytes: ByteArray, extension: String = "jpg"): String =
+        hex(MessageDigest.getInstance("SHA-256").digest(bytes), extension)
 
-    fun filenameFor(file: File): String {
+    fun filenameFor(file: File, extension: String = "jpg"): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
             val buffer = ByteArray(8192)
@@ -17,9 +18,9 @@ object PageNaming {
                 read = input.read(buffer)
             }
         }
-        return hex(digest.digest())
+        return hex(digest.digest(), extension)
     }
 
-    private fun hex(bytes: ByteArray): String =
-        bytes.joinToString("") { "%02x".format(it) } + ".jpg"
+    private fun hex(bytes: ByteArray, extension: String): String =
+        bytes.joinToString("") { "%02x".format(it) } + ".$extension"
 }

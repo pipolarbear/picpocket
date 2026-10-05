@@ -9,4 +9,6 @@ data class Page(
     val ocrText: String? = null,
     val filterTypeOrdinal: Int = 0,
     val createdAt: Long,
+    val kind: PageKind = PageKind.IMAGE,
+    val pdfPageIndex: Int = 0,
 )

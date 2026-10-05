@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import com.picpocket.app.data.workflow.WorkflowTriggerRegistry
 import com.picpocket.app.debug.Tracing
 import com.picpocket.app.debug.TracingConfig
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -18,6 +19,7 @@ class PicPocketApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        PDFBoxResourceLoader.init(applicationContext)
         Tracing.initialize(tracingConfig)
         workflowTriggerRegistry.start()
     }
