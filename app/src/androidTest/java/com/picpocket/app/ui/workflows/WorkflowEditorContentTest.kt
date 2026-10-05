@@ -91,12 +91,12 @@ class WorkflowEditorContentTest {
         render(viewModel(RecordingAction(ActionType.ZIP), RecordingAction(ActionType.ENCRYPT)))
 
         composeRule.onNodeWithTag("add_action").performScrollTo().performClick()
-        composeRule.onNodeWithText(ActionType.ZIP.value).performClick()
-        waitForText(ActionType.ZIP.value)
+        composeRule.onNodeWithText(ActionType.ZIP.label).performClick()
+        waitForText(ActionType.ZIP.label)
 
         composeRule.onAllNodesWithTag("add_step")[0].performScrollTo().performClick()
-        composeRule.onNodeWithText(ActionType.ENCRYPT.value).performClick()
-        waitForText(ActionType.ENCRYPT.value)
+        composeRule.onNodeWithText(ActionType.ENCRYPT.label).performClick()
+        waitForText(ActionType.ENCRYPT.label)
 
         composeRule.onNodeWithText("Passphrase").performScrollTo().assertIsDisplayed()
     }
@@ -106,13 +106,13 @@ class WorkflowEditorContentTest {
         val vm = viewModel(RecordingAction(ActionType.ZIP))
         render(vm)
 
+        assertTrue(vm.uiState.value.workflow.triggers.isEmpty())
+        composeRule.onNodeWithTag("trigger_all").performScrollTo().performClick()
+        composeRule.waitForIdle()
         assertEquals(TriggerEvent.selectable, vm.uiState.value.workflow.triggers)
         composeRule.onNodeWithTag("trigger_all").performScrollTo().performClick()
         composeRule.waitForIdle()
         assertTrue("parent click clears all", vm.uiState.value.workflow.triggers.isEmpty())
-        composeRule.onNodeWithTag("trigger_all").performScrollTo().performClick()
-        composeRule.waitForIdle()
-        assertEquals(TriggerEvent.selectable, vm.uiState.value.workflow.triggers)
     }
 
     @Test
@@ -146,7 +146,7 @@ class WorkflowEditorContentTest {
         composeRule.onNodeWithText("Name matches").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Save").performScrollTo().performClick()
+        composeRule.onNodeWithText("Save").performClick()
         composeRule.waitForIdle()
 
         val saved = runBlocking { wfRepo.observeWorkflows().first() }.single()
@@ -160,10 +160,10 @@ class WorkflowEditorContentTest {
         render(viewModel(action))
 
         composeRule.onNodeWithTag("add_action").performScrollTo().performClick()
-        composeRule.onNodeWithText(ActionType.ZIP.value).performClick()
-        waitForText(ActionType.ZIP.value)
+        composeRule.onNodeWithText(ActionType.ZIP.label).performClick()
+        waitForText(ActionType.ZIP.label)
 
-        composeRule.onNodeWithText("Run now").performScrollTo().performClick()
+        composeRule.onNodeWithText("Run now").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) { action.runs == 1 }
     }
 
@@ -205,7 +205,7 @@ class WorkflowEditorContentTest {
         }
 
         render(viewModel(RecordingAction(ActionType.ENCRYPT)), workflowId = workflowId)
-        waitForText("✗ encrypt: boom")
+        waitForText("✗ Encrypt: boom")
 
         composeRule.onNodeWithText("Clear").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -227,15 +227,15 @@ class WorkflowEditorContentTest {
         composeRule.onNodeWithTag("add_action").performScrollTo().performClick()
         assertTrue(
             "delete must not be a top-level action",
-            composeRule.onAllNodesWithText(ActionType.DELETE.value).fetchSemanticsNodes().isEmpty(),
+            composeRule.onAllNodesWithText(ActionType.DELETE.label).fetchSemanticsNodes().isEmpty(),
         )
-        composeRule.onNodeWithText(ActionType.ZIP.value).performClick()
-        waitForText(ActionType.ZIP.value)
+        composeRule.onNodeWithText(ActionType.ZIP.label).performClick()
+        waitForText(ActionType.ZIP.label)
 
         // An add-step menu does offer delete.
         composeRule.onAllNodesWithTag("add_step")[0].performScrollTo().performClick()
-        composeRule.onNodeWithText(ActionType.DELETE.value).performClick()
-        waitForText(ActionType.DELETE.value)
+        composeRule.onNodeWithText(ActionType.DELETE.label).performClick()
+        waitForText(ActionType.DELETE.label)
 
         // delete is terminal: only the zip node still has an add-step button.
         assertEquals(1, composeRule.onAllNodesWithTag("add_step").fetchSemanticsNodes().size)

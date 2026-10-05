@@ -47,14 +47,33 @@ class WorkflowsViewModelTest {
     }
 
     @Test
-    fun `delete removes a workflow`() = runTest {
-        val id = repository.save(workflow("One"))
+    fun `delete removes a workflow after confirmation`() = runTest {
+        repository.save(workflow("One"))
         coroutineRule.dispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.delete(id)
+        val stored = viewModel.uiState.value.workflows.single()
+        viewModel.requestDelete(stored)
+        assertTrue(viewModel.uiState.value.pendingDelete != null)
+        viewModel.delete()
         coroutineRule.dispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.workflows.isEmpty())
+    }
+
+    @Test
+    fun `undo delete restores the workflow`() = runTest {
+        repository.save(workflow("One"))
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        val stored = viewModel.uiState.value.workflows.single()
+        viewModel.requestDelete(stored)
+        viewModel.delete()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.workflows.isEmpty())
+
+        viewModel.undoDelete()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.workflows.isNotEmpty())
     }
 
     @Test

@@ -2,36 +2,39 @@ package com.picpocket.app.domain.workflow.model
 
 import kotlinx.serialization.Serializable
 
-/** Events that can trigger a workflow. */
-enum class TriggerEvent(val value: String) {
-    DOC_CREATED("doc.created"),
-    PAGES_ADDED("doc.pages_added"),
-    PAGE_RESCANNED("doc.page_rescanned"),
-    PAGE_REMOVED("doc.page_removed"),
-    PAGES_REORDERED("doc.pages_reordered"),
-    RENAMED("doc.renamed"),
-    TAGGED("doc.tagged"),
-    UNTAGGED("doc.untagged"),
-    META_CHANGED("doc.meta_changed"),
-    DELETED("doc.deleted"),
-    MANUAL("manual"),
+/** Events that can trigger a workflow. [label] is what the UI shows. */
+enum class TriggerEvent(val value: String, val label: String) {
+    DOC_CREATED("doc.created", "Created"),
+    PAGES_ADDED("doc.pages_added", "Pages added"),
+    PAGE_RESCANNED("doc.page_rescanned", "Page rescanned"),
+    PAGE_REMOVED("doc.page_removed", "Page removed"),
+    PAGES_REORDERED("doc.pages_reordered", "Pages reordered"),
+    RENAMED("doc.renamed", "Renamed"),
+    TAGGED("doc.tagged", "Tagged"),
+    UNTAGGED("doc.untagged", "Untagged"),
+
+    /** Never emitted. Kept only so stored workflows that selected it still decode. */
+    META_CHANGED("doc.meta_changed", "Meta changed"),
+    DELETED("doc.deleted", "Deleted"),
+    MANUAL("manual", "Manual"),
     ;
 
     companion object {
         fun from(value: String): TriggerEvent? = entries.firstOrNull { it.value == value }
 
         /** Triggers the user can pick in the editor; manual runs bypass the trigger check. */
-        val selectable: List<TriggerEvent> get() = entries.filter { it != MANUAL }
+        val selectable: List<TriggerEvent> get() = entries.filter { it != MANUAL && it != META_CHANGED }
     }
 }
 
-enum class ActionType(val value: String) {
-    ENCRYPT("encrypt"),
-    ZIP("zip"),
-    SAVE_TO_FOLDER("save-to-folder"),
-    SEND_TO_APP("send-to-app"),
-    NOTIFY("notify"),
-    DELETE("delete"),
+/** What an action does. [label] is what the UI shows; [value] is the stored wire name. */
+enum class ActionType(val value: String, val label: String) {
+    ENCRYPT("encrypt", "Encrypt"),
+    ZIP("zip", "Zip"),
+    SAVE_TO_FOLDER("save-to-folder", "Save to folder"),
+    SEND_TO_APP("send-to-app", "Send to app"),
+    NOTIFY("notify", "Notify"),
+    DELETE("delete", "Delete document"),
     ;
 
     /** Terminal actions never have dependents (e.g. deleting the document). */

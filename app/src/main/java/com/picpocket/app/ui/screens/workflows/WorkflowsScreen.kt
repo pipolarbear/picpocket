@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,17 +29,24 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.picpocket.app.domain.workflow.model.ActionNode
@@ -57,7 +65,19 @@ fun WorkflowsScreen(
         if (initialWorkflowId != null) viewModel.openEditor(initialWorkflowId)
     }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = message,
+            actionLabel = "Undo",
+        )
+        viewModel.consumeMessage()
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete()
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Workflows") },
@@ -96,7 +116,7 @@ fun WorkflowsScreen(
                         workflow = workflow,
                         onEdit = { viewModel.openEditor(workflow.id) },
                         onDuplicate = { viewModel.clone(workflow.id) },
-                        onDelete = { viewModel.delete(workflow.id) },
+                        onDelete = { viewModel.requestDelete(workflow) },
                         onToggleEnabled = { viewModel.setEnabled(workflow.id, it) },
                     )
                 }
@@ -108,6 +128,20 @@ fun WorkflowsScreen(
         WorkflowEditorSheet(
             workflowId = state.editorWorkflowId,
             onDismiss = { viewModel.closeEditor() },
+        )
+    }
+
+    state.pendingDelete?.let { workflow ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelDelete,
+            title = { Text("Delete workflow?") },
+            text = { Text("This removes \"${workflow.name}\" and its run history. You can undo right after.") },
+            confirmButton = {
+                TextButton(onClick = viewModel::delete) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelDelete) { Text("Cancel") }
+            },
         )
     }
 }
@@ -139,7 +173,13 @@ private fun WorkflowRow(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 )
             }
-            Switch(checked = workflow.enabled, onCheckedChange = onToggleEnabled)
+            Switch(
+                checked = workflow.enabled,
+                onCheckedChange = onToggleEnabled,
+                modifier = Modifier.semantics {
+                    contentDescription = if (workflow.enabled) "Enabled" else "Disabled"
+                },
+            )
             Spacer(Modifier.width(4.dp))
             IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
                 Icon(Icons.Default.Edit, contentDescription = "Edit workflow", modifier = Modifier.size(18.dp))
@@ -147,7 +187,7 @@ private fun WorkflowRow(
             IconButton(onClick = onDuplicate, modifier = Modifier.size(32.dp).testTag("duplicate_workflow")) {
                 Icon(Icons.Default.ContentCopy, contentDescription = "Duplicate workflow", modifier = Modifier.size(18.dp))
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp).testTag("delete_workflow")) {
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = "Delete workflow",

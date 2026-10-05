@@ -64,8 +64,10 @@ class WorkflowEditorViewModel @Inject constructor(
 
     fun load(workflowId: Long?) {
         if (workflowId == null || workflowId == 0L) {
+            // Start with no events selected: the user opts in rather than
+            // getting a workflow that fires on everything.
             _uiState.value = WorkflowEditorUiState(
-                workflow = Workflow(name = "New workflow", triggers = TriggerEvent.selectable),
+                workflow = Workflow(name = "New workflow", triggers = emptyList()),
                 isNew = true,
                 allTags = _uiState.value.allTags,
             )
