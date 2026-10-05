@@ -45,7 +45,7 @@ class UploadEngine @Inject constructor(
         val version = documentStore.metadataVersion(docId)
         val passphrase = localDriveIndex.passphraseCount
 
-        for (page in doc.pages) {
+        for (page in doc.pages.distinctBy { it.filename }) {
             val pageFile = documentStore.pageFile(docId, page.filename)
             if (pageFile.exists()) {
                 val outcome = driveFileManager.writeFile(tree, docId, page.filename, pageFile.readBytes())

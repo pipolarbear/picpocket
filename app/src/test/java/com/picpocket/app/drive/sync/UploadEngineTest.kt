@@ -1,5 +1,6 @@
 package com.picpocket.app.drive.sync
 
+import com.picpocket.app.data.model.PageKind
 import com.picpocket.app.data.store.DocumentStore
 import com.picpocket.app.data.store.MetadataNaming
 import com.picpocket.app.data.store.StoredDocument
@@ -116,8 +117,7 @@ class UploadEngineTest {
     }
 
     @Test
-    fun `forceReEncryptDocument re-uploads every page under current count`() = runTest {
-        val d = doc("doc-1", listOf(StoredPage(pageNumber = 1, filename = "abc123.jpg", createdAt = 0L)))
+    fun `forceReEncryptDocument re-uploads every page under current count`() = runTest {        val d = doc("doc-1", listOf(StoredPage(pageNumber = 1, filename = "abc123.jpg", createdAt = 0L)))
         coEvery { documentStore.readMetadata("doc-1") } returns Result.success(d)
         coEvery { documentStore.metadataVersion("doc-1") } returns 2
         coEvery { driveFileManager.createDocFolder(any(), any()) } returns true
@@ -133,5 +133,28 @@ class UploadEngineTest {
         coVerify { driveFileManager.writeFile(any(), any(), eq("abc123.jpg"), any()) }
         coVerify { driveFileManager.deleteFileByName("content://tree/", "doc-1", MetadataNaming.name(2, 0)) }
         coVerify { documentStore.writeMetadataAt("doc-1", d, 2, 1) }
+    }
+
+    @Test
+    fun `uploadNewDocument uploads a shared native pdf source once`() = runTest {
+        val d = doc(
+            "doc-1",
+            listOf(
+                StoredPage(pageNumber = 1, filename = "source.pdf", createdAt = 0L, kind = PageKind.PDF, pdfPageIndex = 0),
+                StoredPage(pageNumber = 2, filename = "source.pdf", createdAt = 0L, kind = PageKind.PDF, pdfPageIndex = 1),
+            ),
+        )
+        coEvery { documentStore.readMetadata("doc-1") } returns Result.success(d)
+        coEvery { documentStore.metadataVersion("doc-1") } returns 0
+        coEvery { driveFileManager.createDocFolder(any(), any()) } returns true
+        every { documentStore.pageFile("doc-1", "source.pdf") } returns tempPage()
+        coEvery { driveFileManager.writeFile(any(), any(), any(), any()) } returns WriteOutcome.Verified
+        coEvery { driveFileManager.listFileNames("content://tree/", "doc-1") } returns emptyList()
+        coEvery { documentStore.writeMetadataAt("doc-1", d, 0, 1) } returns Result.success(Unit)
+
+        val result = uploadEngine.uploadNewDocument("doc-1")
+
+        assertTrue(result)
+        coVerify(exactly = 1) { driveFileManager.writeFile(any(), any(), eq("source.pdf"), any()) }
     }
 }

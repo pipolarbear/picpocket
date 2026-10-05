@@ -2,10 +2,13 @@ package com.picpocket.app.domain.export
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import com.picpocket.app.data.model.Page
+import com.picpocket.app.domain.ocr.OcrEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.OutputStream
@@ -13,7 +16,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class SearchablePdfGenerator @Inject constructor() : PdfGenerator {
+class SearchablePdfGenerator @Inject constructor(
+    private val ocrEngine: OcrEngine,
+) : PdfGenerator {
 
     override suspend fun generate(
         context: Context,
@@ -22,6 +27,7 @@ class SearchablePdfGenerator @Inject constructor() : PdfGenerator {
         pageSize: PageSize,
     ): PdfResult = withContext(Dispatchers.IO) {
         try {
+            val searchable = isSearchable(context)
             val document = PdfDocument()
 
             for (page in pages) {
@@ -49,19 +55,8 @@ class SearchablePdfGenerator @Inject constructor() : PdfGenerator {
                     offsetX, offsetY, offsetX + scaledW, offsetY + scaledH
                 ), null)
 
-                val ocrText = page.ocrText
-                if (!ocrText.isNullOrBlank()) {
-                    val textPaint = Paint().apply {
-                        color = android.graphics.Color.TRANSPARENT
-                        isAntiAlias = true
-                        textSize = 12f
-                    }
-                    val textX = offsetX + 20f
-                    val textY = offsetY + 30f
-                    val lines = ocrText.split("\n")
-                    for ((i, line) in lines.withIndex()) {
-                        pdfPage.canvas.drawText(line, textX, textY + i * 14f, textPaint)
-                    }
+                if (searchable) {
+                    drawTextLayer(pdfPage.canvas, bitmap, scale, offsetX, offsetY)
                 }
 
                 document.finishPage(pdfPage)
@@ -78,4 +73,46 @@ class SearchablePdfGenerator @Inject constructor() : PdfGenerator {
             PdfResult.Error(e)
         }
     }
+
+    /**
+     * Recognizes the page and draws each element as invisible text at its real
+     * position, so search and selection line up with the visible words. A
+     * recognition failure simply omits the text layer for that page.
+     */
+    private suspend fun drawTextLayer(
+        canvas: Canvas,
+        bitmap: android.graphics.Bitmap,
+        scale: Float,
+        offsetX: Float,
+        offsetY: Float,
+    ) {
+        val layout = runCatching { ocrEngine.recognizeLayout(bitmap) }.getOrNull() ?: return
+        val placements = SearchableTextLayer.placements(layout.elements, scale, offsetX, offsetY)
+        if (placements.isEmpty()) return
+
+        val paint = Paint().apply {
+            color = Color.TRANSPARENT
+            isAntiAlias = true
+        }
+        for (placement in placements) {
+            paint.textSize = placement.textSize
+            val measured = paint.measureText(placement.text)
+            if (measured > placement.boxWidth && measured > 0f) {
+                paint.textSize = placement.textSize * (placement.boxWidth / measured)
+            }
+            canvas.save()
+            if (placement.rotationDegrees != 0) {
+                canvas.rotate(
+                    placement.rotationDegrees.toFloat(),
+                    placement.centerX,
+                    placement.centerY,
+                )
+            }
+            canvas.drawText(placement.text, placement.left, placement.top + paint.textSize, paint)
+            canvas.restore()
+        }
+    }
+
+    private fun isSearchable(context: Context): Boolean =
+        context.getSharedPreferences("settings", 0).getBoolean("searchable_pdf", true)
 }

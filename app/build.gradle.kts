@@ -119,6 +119,12 @@ dependencies {
     // ML Kit Text Recognition
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
+    // PDF parsing, text extraction, and page copy/merge (born-digital imports)
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0") {
+        // The project already ships bcprov-jdk18on; PdfBox's older copy clashes on resources.
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+    }
+
     // QR Code generation / scanning
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")

@@ -16,7 +16,6 @@ import com.picpocket.app.domain.ocr.MlKitOcrEngine
 import com.picpocket.app.domain.ocr.OcrEngine
 import com.picpocket.app.domain.export.ImageOnlyPdfGenerator
 import com.picpocket.app.domain.export.PdfGenerator
-import com.picpocket.app.domain.export.SearchablePdfGenerator
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -78,5 +77,6 @@ object AppModule {
     @Provides
     @Singleton
     @SearchablePdf
-    fun provideSearchablePdfGenerator(): PdfGenerator = SearchablePdfGenerator()
+    fun provideSearchablePdfGenerator(routing: com.picpocket.app.domain.export.RoutingPdfGenerator): PdfGenerator =
+        routing
 }

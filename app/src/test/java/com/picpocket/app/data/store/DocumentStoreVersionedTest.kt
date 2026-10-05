@@ -1,6 +1,7 @@
 package com.picpocket.app.data.store
 
 import androidx.test.core.app.ApplicationProvider
+import com.picpocket.app.data.model.PageKind
 import com.picpocket.app.util.MainCoroutineRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -126,5 +127,42 @@ class DocumentStoreVersionedTest {
 
         val pages = store.readMetadata(doc.id).getOrThrow().pages
         assertEquals(listOf(1, 2), pages.map { it.pageNumber })
+    }
+
+    @Test
+    fun `removing one of two pages sharing a source keeps the file`() = runTest {
+        val doc = store.createDocument("Doc").getOrThrow()
+        store.appendPage(doc.id, "shared.pdf", fileSizeBytes = 10L, kind = PageKind.PDF, pdfPageIndex = 0)
+        store.appendPage(doc.id, "shared.pdf", fileSizeBytes = 10L, kind = PageKind.PDF, pdfPageIndex = 1)
+        val file = documentDir(doc.id).resolve("shared.pdf")
+        file.writeBytes(byteArrayOf(1))
+
+        store.removePage(doc.id, 1)
+        assertTrue("file must survive while still referenced", file.exists())
+
+        store.removePage(doc.id, 1)
+        assertTrue("file deleted when the last reference is removed", !file.exists())
+    }
+
+    @Test
+    fun `replacePageImage converts a native page back to an image`() = runTest {
+        val doc = store.createDocument("Doc").getOrThrow()
+        store.appendPage(doc.id, "source.pdf", fileSizeBytes = 10L, kind = PageKind.PDF, pdfPageIndex = 0)
+
+        store.replacePageImage(doc.id, 1, "new.jpg", 20L).getOrThrow()
+
+        val page = store.readMetadata(doc.id).getOrThrow().pages.first()
+        assertEquals(PageKind.IMAGE, page.kind)
+        assertEquals(0, page.pdfPageIndex)
+        assertEquals("new.jpg", page.filename)
+    }
+
+    @Test
+    fun `totalFileSize counts a shared source once`() = runTest {
+        val doc = store.createDocument("Doc").getOrThrow()
+        store.appendPage(doc.id, "shared.pdf", fileSizeBytes = 100L, kind = PageKind.PDF, pdfPageIndex = 0)
+        store.appendPage(doc.id, "shared.pdf", fileSizeBytes = 100L, kind = PageKind.PDF, pdfPageIndex = 1)
+
+        assertEquals(100L, store.totalFileSize(doc.id).getOrThrow())
     }
 }

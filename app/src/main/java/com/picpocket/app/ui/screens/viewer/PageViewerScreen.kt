@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import coil.compose.SubcomposeAsyncImage
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.input.pointer.pointerInput
@@ -133,7 +135,7 @@ fun PageViewerScreen(
                         }
                     },
             ) {
-                ZoomablePage(page = page)
+                ZoomablePage(page = page, loadBitmap = { width -> viewModel.renderPage(page, width) })
             }
         }
     }
@@ -141,18 +143,22 @@ fun PageViewerScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ZoomablePage(page: Page) {
+private fun ZoomablePage(page: Page, loadBitmap: (suspend (Int) -> android.graphics.Bitmap?)? = null) {
     var imageWidth by remember(page.imageUri) { mutableIntStateOf(0) }
     var imageHeight by remember(page.imageUri) { mutableIntStateOf(0) }
+    var renderedBitmap by remember(page.imageUri) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var renderWidth by remember(page.imageUri) { mutableIntStateOf(0) }
 
     LaunchedEffect(page.imageUri) {
-        withContext(Dispatchers.IO) {
-            val path = Uri.parse(page.imageUri).path
-            if (path != null) {
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(path, opts)
-                imageWidth = opts.outWidth
-                imageHeight = opts.outHeight
+        if (page.kind != com.picpocket.app.data.model.PageKind.PDF) {
+            withContext(Dispatchers.IO) {
+                val path = Uri.parse(page.imageUri).path
+                if (path != null) {
+                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(path, opts)
+                    imageWidth = opts.outWidth
+                    imageHeight = opts.outHeight
+                }
             }
         }
     }
@@ -162,6 +168,24 @@ private fun ZoomablePage(page: Page) {
     var offsetY by remember { mutableFloatStateOf(0f) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // Render PDF pages sharper as the zoom settles (debounced by LaunchedEffect restarts).
+    LaunchedEffect(page.imageUri, scale) {
+        if (page.kind == com.picpocket.app.data.model.PageKind.PDF && loadBitmap != null) {
+            val target = if (scale > 1.4f) 2400 else 1600
+            if (target != renderWidth) {
+                delay(250)
+                val bitmap = withContext(Dispatchers.IO) { loadBitmap(target) }
+                if (bitmap != null) {
+                    renderedBitmap?.recycle()
+                    renderedBitmap = bitmap
+                    renderWidth = target
+                    imageWidth = bitmap.width
+                    imageHeight = bitmap.height
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -225,21 +249,40 @@ private fun ZoomablePage(page: Page) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        SubcomposeAsyncImage(
-            model = page.imageUri,
-            contentDescription = "Page ${page.pageNumber}",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
-            error = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Failed to load page", style = MaterialTheme.typography.bodyMedium)
-                }
-            },
-        )
+        val bitmap = renderedBitmap
+        if (bitmap != null) {
+            androidx.compose.foundation.Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Page ${page.pageNumber}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        } else if (page.kind == com.picpocket.app.data.model.PageKind.PDF && loadBitmap != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(32.dp))
+            }
+        } else {
+            SubcomposeAsyncImage(
+                model = page.imageUri,
+                contentDescription = "Page ${page.pageNumber}",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                error = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Failed to load page", style = MaterialTheme.typography.bodyMedium)
+                    }
+                },
+            )
+        }
     }
 }

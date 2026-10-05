@@ -80,6 +80,7 @@ class DocumentRepositoryTest {
             tagDao = database.tagDao(),
             eventBus = eventBus,
             pdfPageImporter = PdfPageImporter(),
+            pdfStructure = com.picpocket.app.domain.pdfimport.PdfStructure(),
             ocrManager = com.picpocket.app.domain.ocr.OcrManager(
                 object : OcrEngine {
                     override suspend fun recognize(bitmap: android.graphics.Bitmap): com.picpocket.app.domain.ocr.OcrResult {
@@ -421,6 +422,7 @@ class DocumentRepositoryTest {
             tagDao = database.tagDao(),
             eventBus = com.picpocket.app.data.workflow.DocumentEventBus(),
             pdfPageImporter = mockImporter,
+            pdfStructure = com.picpocket.app.domain.pdfimport.PdfStructure(),
             ocrManager = createOcrManager(app),
             app = app,
             documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
@@ -443,6 +445,7 @@ class DocumentRepositoryTest {
             tagDao = database.tagDao(),
             eventBus = com.picpocket.app.data.workflow.DocumentEventBus(),
             pdfPageImporter = mockImporter,
+            pdfStructure = com.picpocket.app.domain.pdfimport.PdfStructure(),
             ocrManager = createOcrManager(app),
             app = app,
             documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
@@ -479,6 +482,7 @@ class DocumentRepositoryTest {
             tagDao = database.tagDao(),
             eventBus = com.picpocket.app.data.workflow.DocumentEventBus(),
             pdfPageImporter = mockImporter,
+            pdfStructure = com.picpocket.app.domain.pdfimport.PdfStructure(),
             ocrManager = createOcrManager(app),
             app = app,
             documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
@@ -533,6 +537,7 @@ class DocumentRepositoryTest {
             tagDao = database.tagDao(),
             eventBus = com.picpocket.app.data.workflow.DocumentEventBus(),
             pdfPageImporter = mockImporter,
+            pdfStructure = com.picpocket.app.domain.pdfimport.PdfStructure(),
             ocrManager = createOcrManager(app),
             app = app,
             documentAccess = com.picpocket.app.data.store.DocumentAccessStore(app),
