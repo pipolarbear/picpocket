@@ -325,7 +325,7 @@ class DocumentRepositoryImpl @Inject constructor(
                         fileSizeBytes = dest.length(),
                         kind = PageKind.PDF,
                         pdfPageIndex = index,
-                        ocrText = text.ifBlank { null },
+                        ocrText = text,
                     ).getOrThrow()
                 }
                 store.refreshOcrComplete(doc.id)
