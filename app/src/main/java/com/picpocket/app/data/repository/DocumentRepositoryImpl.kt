@@ -55,7 +55,10 @@ class DocumentRepositoryImpl @Inject constructor(
     }
 
     init {
-        scope.launch { refreshDocuments() }
+        scope.launch {
+            store.repairPageNumbers()
+            refreshDocuments()
+        }
         scope.launch { ocrManager.metadataChanged.collect { refreshDocuments() } }
     }
 
@@ -138,7 +141,7 @@ class DocumentRepositoryImpl @Inject constructor(
         fileSizeBytes: Long,
         qualityTier: Int,
     ): Result<Unit> {
-        return store.nextPageNumber(documentId).mapCatching { pageNumber ->
+        return runCatching {
             val src = java.io.File(java.net.URI(imageUri))
             val tier = QualityTier.entries.getOrNull(qualityTier) ?: QualityTier.BEST
             val dir = store.documentDir(documentId)
@@ -147,9 +150,8 @@ class DocumentRepositoryImpl @Inject constructor(
             val filename = store.pageFilenameFor(tmp.readBytes())
             val pageFile = store.pageFile(documentId, filename)
             tmp.renameTo(pageFile)
-            store.addPage(
+            store.appendPage(
                 documentId = documentId,
-                pageNumber = pageNumber,
                 filename = filename,
                 fileSizeBytes = pageFile.length(),
                 filterTypeOrdinal = filterTypeOrdinal,
