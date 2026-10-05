@@ -15,7 +15,7 @@ PicPocket is a local-first document scanner and organizer for Android: capture m
 - **Auto-capture** — ML Kit Document Scanner API detects document boundaries and captures with perspective correction
 - **Multi-page documents** — Scan multiple pages, preview, reorder, and export them as a single PDF
 - **On-device OCR** — ML Kit Text Recognition extracts text offline; no data leaves the device
-- **Searchable PDFs** — Invisible text layer embedded in generated PDFs so you can search document content
+- **Searchable PDFs** — Invisible text layer embedded in generated PDFs, positioned over the recognized words so search and selection line up; can be turned off in Settings ("Searchable PDF")
 - **Image filters** — Grayscale, brightness, contrast, sharpen, and binarize per page
 - **Drag-and-drop reorder** — Rearrange pages in edit mode
 - **Full-screen viewer** — Swipe between pages, pinch-to-zoom, double-tap to reset
@@ -27,7 +27,7 @@ PicPocket is a local-first document scanner and organizer for Android: capture m
 - **Import PDFs** — Import existing PDFs into the library as documents
 - **Page editing** — Append pages to a document, delete a single page, or rescan a page to replace its image
 - **Collate pages** — Merge selected pages into one continuous image. All pages are selected by default; pick a layout — **Auto** (find the overlap and stitch, showing which direction it chose), **Horizontal**, or **Vertical** (place without aligning) — then use the full-screen editor to zoom the preview, drag to reorder the sources, match their sizes, drag a seam to line the join up, or reset back to auto. Choose whether to remove the source pages after merging (kept by default). The merged page inherits the sources' OCR text (or is OCR'd if they have none). Export with the "Match image" page size to keep a tall strip at its own size with no margins. Targets flat surfaces — curled or folded pages are not flattened.
-- **Export & share** — Export to PDF (A0–A6, Letter, Legal, Tabloid; selectable quality); export with a searchable text layer when OCR is on; share or save via SAF
+- **Export & share** — Export to PDF (A0–A6, Letter, Legal, Tabloid, or "Match image"); the searchable text layer is placed at the recognized words and honors the "Searchable PDF" setting; share or save via SAF
 - **Sync anywhere** — Point PicPocket at any Storage Access Framework folder (Google Drive, Nextcloud, …) and sync across devices that share it, with conflict handling
 - **Optional encryption** — Enable a passphrase and synced files are encrypted before they leave the device; change or disable it any time
 - **Workflows** — Automate document actions (encrypt, zip, save to folder, send to an app, notify, delete) when events happen (created, pages added, renamed, tagged, …), with run history

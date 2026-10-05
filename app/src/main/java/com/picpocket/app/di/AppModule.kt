@@ -78,5 +78,6 @@ object AppModule {
     @Provides
     @Singleton
     @SearchablePdf
-    fun provideSearchablePdfGenerator(): PdfGenerator = SearchablePdfGenerator()
+    fun provideSearchablePdfGenerator(ocrEngine: OcrEngine): PdfGenerator =
+        SearchablePdfGenerator(ocrEngine)
 }
