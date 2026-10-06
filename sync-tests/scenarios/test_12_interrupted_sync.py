@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from devices.pdf_utils import generate_and_push
+from devices.pdf_utils import generate_image_and_push
 from devices.tracing import APP_PACKAGE, sync_with_false_mutex_retry
 from scenarios._integrity import assert_drive_verified
 
@@ -17,6 +17,10 @@ class TestInterruptedSync:
     app is killed in that window, the partial transfer is abandoned; the next
     sync must cleanly complete the doc (idempotent retry), leaving no
     half-written or zero-byte residue on the server.
+
+    Uses an image-only PDF (no text layer) so each page imports as its own
+    rasterized file; a born-digital PDF stores the whole document as one file,
+    which uploads too quickly to catch mid-upload and never produces 101 files.
     """
 
     @pytest.fixture(autouse=True)
@@ -25,7 +29,7 @@ class TestInterruptedSync:
         self.oracle = oracle
 
     def test_interrupted_upload_recovers_on_next_sync(self, emu_a, watcher_a, oracle):
-        generate_and_push(emu_a.adb, "test-interrupt", pages=100)
+        generate_image_and_push(emu_a.adb, "test-interrupt", pages=100)
         emu_a.open_app()
         emu_a.import_pdf("test-interrupt.pdf")
         time.sleep(3)
@@ -63,8 +67,11 @@ class TestInterruptedSync:
         time.sleep(2)
 
         # Reopen and re-sync: the interrupted doc must upload to completion.
+        # The app's own retry backoff (RetryHandler, exponential up to an hour)
+        # can delay the first post-kill sync past a short window, so allow a
+        # generous timeout for the backoff plus the full 100-page re-upload.
         emu_a.open_app()
-        sync_with_false_mutex_retry(emu_a, watcher_a, timeout=240.0)
+        sync_with_false_mutex_retry(emu_a, watcher_a, timeout=600.0)
 
         # The interrupted upload may have left 0-byte files on Drive
         # (the app's nextSyncRegistryFromDrive openInputStream fails
@@ -84,7 +91,7 @@ class TestInterruptedSync:
                 logger.info("Deleted %d zero-byte file(s), re-triggering recovery sync",
                             len(zeros))
                 emu_a.trigger_sync()
-                sync_with_false_mutex_retry(emu_a, watcher_a, timeout=240.0)
+                sync_with_false_mutex_retry(emu_a, watcher_a, timeout=600.0)
 
         assert_drive_verified(oracle, drive_finality=True, drive_timeout=180)
 

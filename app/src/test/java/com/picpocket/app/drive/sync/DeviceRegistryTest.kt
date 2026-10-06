@@ -347,8 +347,11 @@ class DeviceRegistryTest {
         val registryFile = mockk<DocumentFile>()
         every { registryFile.name } returns "devices.json"
         every { registryFile.uri } returns Uri.parse("content://tree/devices.json")
-        every { contentResolver.openInputStream(any()) } returns
+        // A fresh stream per read: `returns` would hand back the same exhausted
+        // stream, so attempts 2..N would read 0 bytes and take the empty path.
+        every { contentResolver.openInputStream(any()) } answers {
             ByteArrayInputStream("{ not valid json".toByteArray(Charsets.UTF_8))
+        }
 
         val root = mockk<DocumentFile>()
         every { root.uri } returns Uri.parse("content://tree/")

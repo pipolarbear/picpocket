@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from devices.pdf_utils import generate_and_push
+from devices.pdf_utils import generate_image_and_push
 from devices.tracing import APP_PACKAGE, sync_with_false_mutex_retry
 from scenarios._integrity import assert_drive_verified
 
@@ -22,6 +22,10 @@ class TestPushAfterLocalEdit:
     editing pages out-of-band, the test stages the new files on /sdcard and
     copies them into the app's private storage with `run-as`, while the app is
     force-stopped so no sync can race the edit.
+
+    Uses an image-only PDF (no text layer) so each page imports as its own
+    rasterized file; a born-digital PDF would store the whole document once and
+    every page would share one file, which cannot exercise per-page pruning.
     """
 
     @pytest.fixture(autouse=True)
@@ -47,7 +51,7 @@ class TestPushAfterLocalEdit:
         return newest, version, passphrase
 
     def test_local_edit_pushes_and_prunes_remotes(self, emu_a, watcher_a, oracle):
-        generate_and_push(emu_a.adb, "test-push", pages=2)
+        generate_image_and_push(emu_a.adb, "test-push", pages=2)
         emu_a.open_app()
         emu_a.import_pdf("test-push.pdf")
         time.sleep(3)
