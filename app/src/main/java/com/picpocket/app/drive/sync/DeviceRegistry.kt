@@ -199,8 +199,10 @@ class DeviceRegistry @Inject constructor(
 
         // The Nextcloud bridge serves file contents from a cache that lags
         // the server by one refresh cycle, so a just-listed devices.json can
-        // transiently read back empty. Retry before treating it as corrupt;
-        // only a persistent decode failure halts the sync.
+        // transiently read back empty. Retry, then treat a persistently empty
+        // registry as absent (a 0-byte file holds no data; the same sync's
+        // syncRegistryToDrive re-creates it). Only a persistent *decode*
+        // failure — non-empty but corrupt, which may hold real data — halts.
         for (attempt in 1..REGISTRY_READ_ATTEMPTS) {
             try { context.contentResolver.refresh(root.uri, null, null) } catch (_: Throwable) { }
             val file = root.listFiles().find { it.name == REGISTRY_FILE }
@@ -237,7 +239,15 @@ class DeviceRegistry @Inject constructor(
             Tracing.d(Category.STORE_STATE, TAG, "syncRegistryFromDrive: imported ${remote.devices.size} device(s)")
             return
         }
-        throw CorruptRegistryException("$REGISTRY_FILE exists on drive but could not be read; sync halted")
+        // Persistent empty reads (a truncated/0-byte registry, e.g. an
+        // interrupted bridge write) are treated as absent rather than fatal:
+        // a 0-byte file carries no data, and syncRegistryToDrive re-creates it
+        // later in this same sync. Halting here would block all syncing until
+        // manual intervention.
+        Tracing.w(
+            Category.STORE_STATE, TAG,
+            "syncRegistryFromDrive: $REGISTRY_FILE persistently empty after $REGISTRY_READ_ATTEMPTS attempts; treating as absent and re-creating it",
+        )
     }
 
     suspend fun cleanDrive() {

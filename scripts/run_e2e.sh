@@ -35,7 +35,8 @@ if [ "$mode" = "parallel" ]; then
   w1=( "scenarios/test_01_happy_path.py::TestHappyPath::test_a_imports_3page_pdf_drive_verifies"
        "scenarios/test_saf_to_drive.py"
        "scenarios/test_06_push_after_local_edit.py"
-       "scenarios/test_12_interrupted_sync.py" )
+       "scenarios/test_12_interrupted_sync.py"
+       "scenarios/test_14_native_pdf_prune.py" )
   w2=( "scenarios/test_02_remote_add_page.py"
        "scenarios/test_03_conflict.py"
        "scenarios/test_07_corrupt_registry_halts.py"

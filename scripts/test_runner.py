@@ -156,6 +156,7 @@ SCENARIO_WORKERS = {
         "scenarios/test_saf_to_drive.py",
         "scenarios/test_06_push_after_local_edit.py",
         "scenarios/test_12_interrupted_sync.py",
+        "scenarios/test_14_native_pdf_prune.py",
     ]),
     "w2": ("emulator-5556", [
         "scenarios/test_02_remote_add_page.py",
@@ -173,7 +174,7 @@ EXPECTED_COUNTS = {
     "instrumented": None,  # parsed from JUnit XML after the batch run
     "infra": None,         # collected with pytest --collect-only
     "saf": 4,
-    "scenario": 13 + 5 + 1,  # parallel workers (7 + 6) + serial phase (5) + setup-code join
+    "scenario": 14 + 5 + 1,  # parallel workers (8 + 6) + serial phase (5) + setup-code join
 }
 
 TIERS = {
