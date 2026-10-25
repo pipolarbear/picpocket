@@ -185,6 +185,7 @@ class DocumentStore @Inject constructor(
     suspend fun deleteDocument(documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             documentDir(documentId).deleteRecursively()
+            clearWorkflowArtifacts(documentId)
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -239,6 +240,7 @@ class DocumentStore @Inject constructor(
     suspend fun deleteTrashed(documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             File(trashRoot, documentId).deleteRecursively()
+            clearWorkflowArtifacts(documentId)
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
     }
@@ -249,8 +251,20 @@ class DocumentStore @Inject constructor(
         var removed = 0
         trashRoot.listFiles()
             ?.filter { it.isDirectory && it.lastModified() < cutoff }
-            ?.forEach { if (it.deleteRecursively()) removed++ }
+            ?.forEach {
+                if (it.deleteRecursively()) {
+                    clearWorkflowArtifacts(it.name)
+                    removed++
+                }
+            }
         removed
+    }
+
+    /** Removes the document's rendered PDF and any encrypted/zipped artifacts. */
+    private fun clearWorkflowArtifacts(documentId: String) {
+        File(app.cacheDir, "workflow").listFiles()
+            ?.filter { it.isFile && it.name.startsWith("$documentId.") }
+            ?.forEach { it.delete() }
     }
 
     private fun decodeRawIn(dir: File): StoredDocument? {
