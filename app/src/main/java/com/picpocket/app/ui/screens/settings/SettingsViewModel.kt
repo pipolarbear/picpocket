@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.scan.QualityTier
 import com.picpocket.app.ui.theme.DarkMode
-import com.picpocket.app.ui.theme.Palette
 import com.picpocket.app.ui.theme.ThemeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +17,6 @@ import javax.inject.Inject
 data class SettingsUiState(
     val searchablePdf: Boolean = true,
     val darkMode: DarkMode = DarkMode.SYSTEM,
-    val palette: Palette = Palette.DEFAULT,
     val pageSize: PageSize = PageSize.A4,
     val qualityTier: QualityTier = QualityTier.BEST,
 )
@@ -46,7 +44,6 @@ class SettingsViewModel @Inject constructor(
                 pageSize = pageSize,
                 qualityTier = qualityTier,
                 darkMode = config.darkMode,
-                palette = config.palette,
             )
         }
     }
@@ -59,11 +56,6 @@ class SettingsViewModel @Inject constructor(
     fun setDarkMode(mode: DarkMode) {
         themeManager.setDarkMode(mode)
         _uiState.update { it.copy(darkMode = mode) }
-    }
-
-    fun setPalette(palette: Palette) {
-        themeManager.setPalette(palette)
-        _uiState.update { it.copy(palette = palette) }
     }
 
     fun setPageSize(size: PageSize) {

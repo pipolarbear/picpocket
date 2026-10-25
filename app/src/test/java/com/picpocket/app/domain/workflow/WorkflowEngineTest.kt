@@ -3,7 +3,9 @@ package com.picpocket.app.domain.workflow
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.picpocket.app.data.FakeDocumentRepository
+import com.picpocket.app.data.FakeWorkflowRepository
 import com.picpocket.app.domain.export.FakePdfGenerator
+import com.picpocket.app.domain.storage.FakeFolderAccess
 import com.picpocket.app.domain.workflow.action.DeleteAction
 import com.picpocket.app.domain.workflow.crypto.ArtifactCipher
 import com.picpocket.app.domain.workflow.engine.WorkflowEngine
@@ -42,13 +44,19 @@ class WorkflowEngineTest {
     private fun engine(
         actions: List<RecordingAction>,
         pdf: FakePdfGenerator = FakePdfGenerator(),
+        network: FakeNetworkMonitor = FakeNetworkMonitor(),
+        folderAccess: FakeFolderAccess = FakeFolderAccess(),
+        workflowRepository: FakeWorkflowRepository = FakeWorkflowRepository(),
     ): WorkflowEngine = WorkflowEngine(
         app = app,
         repository = repo,
+        workflowRepository = workflowRepository,
         pdfGenerator = pdf,
         cipher = ArtifactCipher(),
         foreground = FakeForegroundExecutor(),
         registry = FakeActionRegistry(actions.associateBy { it.type }),
+        folderAccess = folderAccess,
+        network = network,
     )
 
     private fun node(id: String, type: ActionType, children: List<ActionNode> = emptyList()) =
@@ -253,12 +261,15 @@ class WorkflowEngineTest {
         val engine = WorkflowEngine(
             app = app,
             repository = repo,
+            workflowRepository = FakeWorkflowRepository(),
             pdfGenerator = FakePdfGenerator(),
             cipher = ArtifactCipher(),
             foreground = FakeForegroundExecutor(),
             registry = FakeActionRegistry(
                 mapOf(ActionType.ZIP to zip, ActionType.DELETE to DeleteAction()),
             ),
+            folderAccess = FakeFolderAccess(),
+            network = FakeNetworkMonitor(),
         )
 
         engine.run(workflow, TriggerEvent.DOC_CREATED, document)

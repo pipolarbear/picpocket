@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.picpocket.app.data.local.PicPocketDatabase
 import com.picpocket.app.data.repository.WorkflowRepository
 import com.picpocket.app.data.repository.WorkflowRepositoryImpl
+import com.picpocket.app.domain.workflow.FakeWorkflowQueueScheduler
 import com.picpocket.app.domain.workflow.model.ActionNode
 import com.picpocket.app.domain.workflow.model.ActionType
 import com.picpocket.app.domain.workflow.model.RunResult
@@ -17,6 +18,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,7 +36,12 @@ class WorkflowRepositoryTest {
             ApplicationProvider.getApplicationContext(),
             PicPocketDatabase::class.java,
         ).allowMainThreadQueries().build()
-        repo = WorkflowRepositoryImpl(db.workflowDao(), db.workflowRunDao())
+        repo = WorkflowRepositoryImpl(
+            db.workflowDao(),
+            db.workflowRunDao(),
+            db.workflowPendingRunDao(),
+            FakeWorkflowQueueScheduler(),
+        )
     }
 
     @After
@@ -69,7 +76,7 @@ class WorkflowRepositoryTest {
     @Test
     fun `delete removes the workflow and its runs`() = runTest {
         val id = repo.save(workflow())
-        repo.recordRun(workflow(), TriggerEvent.DOC_CREATED, 0L, RunResult(RunStatus.SUCCESS, emptyList()))
+        repo.recordRun(workflow(), TriggerEvent.DOC_CREATED, null, null, 0L, RunResult(RunStatus.SUCCESS, emptyList()))
         repo.delete(id)
         assertNull(repo.get(id))
         assertEquals(0, repo.observeRuns(id).first().size)
@@ -80,7 +87,7 @@ class WorkflowRepositoryTest {
         val id = repo.save(workflow())
         val saved = workflow().copy(id = id)
         repeat(WorkflowRepository.HISTORY_LIMIT + 5) { i ->
-            repo.recordRun(saved, TriggerEvent.DOC_CREATED, i.toLong(), RunResult(RunStatus.SUCCESS, emptyList()))
+            repo.recordRun(saved, TriggerEvent.DOC_CREATED, null, null, i.toLong(), RunResult(RunStatus.SUCCESS, emptyList()))
         }
         assertEquals(WorkflowRepository.HISTORY_LIMIT, repo.observeRuns(id).first().size)
     }
@@ -88,8 +95,54 @@ class WorkflowRepositoryTest {
     @Test
     fun `clearHistory empties the runs`() = runTest {
         val id = repo.save(workflow())
-        repo.recordRun(workflow().copy(id = id), TriggerEvent.DOC_CREATED, 0L, RunResult(RunStatus.FAILURE, emptyList()))
+        repo.recordRun(workflow().copy(id = id), TriggerEvent.DOC_CREATED, null, null, 0L, RunResult(RunStatus.FAILURE, emptyList()))
         repo.clearHistory(id)
         assertEquals(0, repo.observeRuns(id).first().size)
+    }
+
+    @Test
+    fun `enqueueDeferred stores a pending run`() = runTest {
+        val id = repo.save(workflow("queued"))
+        repo.enqueueDeferred(repo.get(id)!!, TriggerEvent.DOC_CREATED, "doc-1", null)
+
+        val pending = repo.listDeferred().single()
+        assertEquals(id, pending.workflowId)
+        assertEquals("queued", pending.workflowName)
+        assertEquals("doc-1", pending.documentId)
+        assertEquals(TriggerEvent.DOC_CREATED, pending.trigger)
+        assertEquals(1, repo.observeDeferredCount().first())
+    }
+
+    @Test
+    fun `removeDeferred clears one queued run`() = runTest {
+        val id = repo.save(workflow())
+        val saved = repo.get(id)!!
+        repo.enqueueDeferred(saved, TriggerEvent.DOC_CREATED, "doc-1", null)
+        val pending = repo.listDeferred().single()
+
+        repo.removeDeferred(pending.id)
+
+        assertTrue(repo.listDeferred().isEmpty())
+        assertEquals(0, repo.observeDeferredCount().first())
+    }
+
+    @Test
+    fun `deleting a workflow drops its pending runs`() = runTest {
+        val id = repo.save(workflow())
+        repo.enqueueDeferred(repo.get(id)!!, TriggerEvent.DOC_CREATED, "doc-1", null)
+
+        repo.delete(id)
+
+        assertTrue(repo.listDeferred().isEmpty())
+    }
+
+    @Test
+    fun `disabling a workflow drops its pending runs`() = runTest {
+        val id = repo.save(workflow())
+        repo.enqueueDeferred(repo.get(id)!!, TriggerEvent.DOC_CREATED, "doc-1", null)
+
+        repo.setEnabled(id, false)
+
+        assertTrue(repo.listDeferred().isEmpty())
     }
 }

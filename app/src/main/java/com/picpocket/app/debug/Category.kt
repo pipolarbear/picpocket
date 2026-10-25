@@ -7,4 +7,5 @@ enum class Category(val defaultLevel: Level) {
     DRIVE_API(Level.WARN),
     CHAT_API(Level.WARN),
     OCR(Level.INFO),
+    WORKFLOW(Level.WARN),
 }

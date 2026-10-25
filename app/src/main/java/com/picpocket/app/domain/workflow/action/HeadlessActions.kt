@@ -1,8 +1,9 @@
 package com.picpocket.app.domain.workflow.action
 
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import com.picpocket.app.domain.storage.FolderAccess
+import com.picpocket.app.domain.storage.FolderWriter
+import com.picpocket.app.domain.storage.TrashSettings
 import com.picpocket.app.domain.workflow.engine.WorkflowContext
 import com.picpocket.app.domain.workflow.model.ActionParams
 import com.picpocket.app.domain.workflow.model.ActionResult
@@ -50,9 +51,16 @@ class ZipAction @Inject constructor() : WorkflowAction {
 /** Copies the current artifact into a chosen SAF folder and passes it on. */
 class SaveToFolderAction @Inject constructor(
     private val folderAccess: FolderAccess,
+    private val folderWriter: FolderWriter,
 ) : WorkflowAction {
     override val type = ActionType.SAVE_TO_FOLDER
     override val execution = Execution.HEADLESS
+
+    override fun requiresNetwork(ctx: WorkflowContext, params: ActionParams): Boolean {
+        val config = params as? ActionParams.SaveToFolder ?: return false
+        if (config.folderUri.isBlank()) return false
+        return ctx.folderAccess.isRemote(Uri.parse(config.folderUri))
+    }
 
     override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult {
         val config = params as? ActionParams.SaveToFolder
@@ -65,34 +73,44 @@ class SaveToFolderAction @Inject constructor(
             return ActionResult.Failure("save-to-folder: folder access was revoked; pick it again")
         }
         val source = ctx.ensurePdf(input)
-        val folder = runCatching { DocumentFile.fromTreeUri(ctx.app, treeUri) }.getOrNull()
-            ?: return ActionResult.Failure("save-to-folder: target folder not found")
-        if (!runCatching { folder.exists() }.getOrDefault(false)) {
-            return ActionResult.Failure("save-to-folder: target folder not found")
-        }
         val name = "${ctx.document.name.replace(" ", "_").replace("/", "_")}.${source.extension()}"
-        folder.findFile(name)?.delete()
-        val created = folder.createFile(source.mime, name)
-            ?: return ActionResult.Failure("save-to-folder: could not create $name")
-        ctx.app.contentResolver.openInputStream(Uri.parse(source.uri))?.use { inputStream ->
-            ctx.app.contentResolver.openOutputStream(created.uri)?.use { output ->
-                inputStream.copyTo(output)
-            }
-        } ?: return ActionResult.Failure("save-to-folder: could not read artifact")
-        return ActionResult.Success(source)
+        return folderWriter.write(treeUri, name, source.mime, Uri.parse(source.uri)).fold(
+            onSuccess = { saved ->
+                val size = if (saved.size > 0) {
+                    android.text.format.Formatter.formatShortFileSize(ctx.app, saved.size)
+                } else {
+                    null
+                }
+                ActionResult.Success(
+                    source,
+                    note = "Saved as ${saved.name}" + (size?.let { " ($it)" } ?: ""),
+                )
+            },
+            onFailure = {
+                ActionResult.Failure("save-to-folder: ${it.message ?: "could not write $name"}")
+            },
+        )
     }
 }
 
-/** Deletes the triggering document. Terminal: it never has dependents. */
+/** Moves the triggering document to the recoverable local trash. Terminal. */
 class DeleteAction @Inject constructor() : WorkflowAction {
     override val type = ActionType.DELETE
     override val execution = Execution.HEADLESS
 
-    override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult =
-        ctx.repository.deleteDocument(ctx.document.id).fold(
-            onSuccess = { input?.let { ActionResult.Success(it) } ?: ActionResult.Skip },
-            onFailure = { ActionResult.Failure("delete: ${it.message ?: "could not delete the document"}") },
+    override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult {
+        val days = TrashSettings.read(ctx.app)
+        return ctx.repository.moveDocumentToTrash(ctx.document.id).fold(
+            onSuccess = {
+                input?.let {
+                    ActionResult.Success(it, note = "Moved to Recently deleted (kept $days days)")
+                } ?: ActionResult.Skip
+            },
+            onFailure = {
+                ActionResult.Failure("delete: ${it.message ?: "could not move the document to trash"}")
+            },
         )
+    }
 }
 
 internal fun Artifact.readBytes(ctx: WorkflowContext): ByteArray {

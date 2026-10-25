@@ -16,6 +16,8 @@ data class WorkflowsUiState(
     val workflows: List<Workflow> = emptyList(),
     val showEditor: Boolean = false,
     val editorWorkflowId: Long? = null,
+    /** Runs waiting for a network connection. */
+    val deferredCount: Int = 0,
     /** Set when the user tapped delete but has not confirmed yet. */
     val pendingDelete: Workflow? = null,
     /** A workflow just deleted, offered for undo. */
@@ -35,6 +37,11 @@ class WorkflowsViewModel @Inject constructor(
         viewModelScope.launch {
             workflowRepository.observeWorkflows().collect { workflows ->
                 _uiState.update { it.copy(workflows = workflows) }
+            }
+        }
+        viewModelScope.launch {
+            workflowRepository.observeDeferredCount().collect { count ->
+                _uiState.update { it.copy(deferredCount = count) }
             }
         }
     }

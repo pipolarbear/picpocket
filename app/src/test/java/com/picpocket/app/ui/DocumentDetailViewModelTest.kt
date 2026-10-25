@@ -2,8 +2,13 @@ package com.picpocket.app.ui
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import com.picpocket.app.data.FakeDocumentRepository
 import com.picpocket.app.data.store.DocumentStore
+import com.picpocket.app.data.workflow.WorkflowActivity
+import com.picpocket.app.data.workflow.WorkflowActivityBus
+import com.picpocket.app.domain.storage.FakeFolderWriter
+import com.picpocket.app.domain.workflow.model.RunStatus
 import io.mockk.mockk
 import com.picpocket.app.domain.ocr.FakeOcrEngine
 import com.picpocket.app.domain.ocr.OcrManager
@@ -13,7 +18,10 @@ import com.picpocket.app.domain.scanner.ScannerResult
 import com.picpocket.app.ui.screens.detail.DocumentDetailViewModel
 import com.picpocket.app.util.MainCoroutineRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -35,6 +43,8 @@ class DocumentDetailViewModelTest {
 
     private lateinit var repo: FakeDocumentRepository
     private lateinit var viewModel: DocumentDetailViewModel
+    private lateinit var activityBus: WorkflowActivityBus
+    private lateinit var folderWriter: FakeFolderWriter
     private var documentId: String = ""
     private lateinit var scannerManager: ScannerManager
 
@@ -47,6 +57,8 @@ class DocumentDetailViewModelTest {
         val app = RuntimeEnvironment.getApplication() as Application
         val store = DocumentStore(app)
         scannerManager = mockk(relaxed = true)
+        activityBus = WorkflowActivityBus()
+        folderWriter = FakeFolderWriter()
         viewModel = DocumentDetailViewModel(
             app,
             repo,
@@ -54,7 +66,71 @@ class DocumentDetailViewModelTest {
             FakePdfGenerator(),
             OcrManager(FakeOcrEngine(), store),
             scannerManager,
+            folderWriter,
+            activityBus = activityBus,
         )
+    }
+
+    @Test
+    fun `saving to a folder reports success`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        val message = async { viewModel.messages.first() }
+        viewModel.saveToDrive(Uri.parse("content://folder"))
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Saved to Drive as My_Document.pdf", message.await())
+        assertEquals(1, folderWriter.writes.size)
+    }
+
+    @Test
+    fun `saving to a folder reports the failure reason`() = runTest {
+        folderWriter.writeResult = Result.failure(IOException("could not open the picked folder"))
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        val message = async { viewModel.messages.first() }
+        viewModel.saveToDrive(Uri.parse("content://folder"))
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Could not save: could not open the picked folder", message.await())
+    }
+
+    @Test
+    fun `a deferred workflow activity shows a message`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        val message = async { viewModel.messages.first() }
+        activityBus.emit(
+            WorkflowActivity(
+                documentId = documentId,
+                documentName = "My Document",
+                workflowName = "reciepts",
+                status = RunStatus.DEFERRED,
+                saveTarget = "Receipts",
+                failureReason = null,
+            ),
+        )
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(
+            "Workflow \"reciepts\" is waiting for network; it will run automatically",
+            message.await(),
+        )
+    }
+
+    @Test
+    fun `deleting the document emits a gone message`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        val message = async { viewModel.documentGone.first() }
+        repo.deleteDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Document was removed", message.await())
     }
 
     @Test

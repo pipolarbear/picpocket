@@ -193,11 +193,24 @@ class WorkflowEditorViewModel @Inject constructor(
             }
             val startedAt = System.currentTimeMillis()
             val result = engine.run(workflow, TriggerEvent.MANUAL, document, ignoreTriggerCheck = true)
-            workflowRepository.recordRun(workflow, TriggerEvent.MANUAL, startedAt, result)
+            workflowRepository.recordRun(
+                workflow,
+                TriggerEvent.MANUAL,
+                document.id,
+                document.name,
+                startedAt,
+                result,
+            )
             val text = when (result.status) {
                 RunStatus.SUCCESS -> "Run succeeded"
                 RunStatus.PARTIAL_FAILURE -> "Run partially failed"
                 RunStatus.FAILURE -> "Run failed"
+                RunStatus.DEFERRED ->
+                    if (workflow.id == 0L) {
+                        "Save the workflow to queue it until you're online"
+                    } else {
+                        "Queued — will run when you're back online"
+                    }
             }
             _uiState.update { it.copy(message = text) }
         }

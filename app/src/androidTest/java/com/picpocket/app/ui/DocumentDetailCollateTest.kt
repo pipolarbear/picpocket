@@ -24,6 +24,7 @@ import com.picpocket.app.domain.export.FakePdfGenerator
 import com.picpocket.app.domain.ocr.FakeOcrEngine
 import com.picpocket.app.domain.ocr.OcrManager
 import com.picpocket.app.domain.scanner.FakeScannerManager
+import com.picpocket.app.domain.storage.FakeFolderWriter
 import com.picpocket.app.ui.screens.detail.DocumentDetailScreen
 import com.picpocket.app.ui.screens.detail.DocumentDetailViewModel
 import kotlinx.coroutines.runBlocking
@@ -66,6 +67,7 @@ class DocumentDetailCollateTest {
         FakePdfGenerator(),
         OcrManager(FakeOcrEngine(), store),
         FakeScannerManager(),
+            FakeFolderWriter(),
     )
 
     private fun waitForText(text: String) {

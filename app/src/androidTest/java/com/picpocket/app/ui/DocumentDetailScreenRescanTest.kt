@@ -17,6 +17,7 @@ import com.picpocket.app.domain.ocr.FakeOcrEngine
 import com.picpocket.app.domain.ocr.OcrManager
 import com.picpocket.app.domain.scanner.FakeScannerManager
 import com.picpocket.app.domain.scanner.ScannerResult
+import com.picpocket.app.domain.storage.FakeFolderWriter
 import com.picpocket.app.ui.screens.detail.DocumentDetailScreen
 import com.picpocket.app.ui.screens.detail.DocumentDetailViewModel
 import com.picpocket.app.util.TestBitmapFactory
@@ -93,6 +94,7 @@ class DocumentDetailScreenRescanTest {
             FakePdfGenerator(),
             OcrManager(ocrEngine, store),
             FakeScannerManager(),
+            FakeFolderWriter(),
         )
 
         composeRule.setContent {
@@ -137,6 +139,7 @@ class DocumentDetailScreenRescanTest {
             FakePdfGenerator(),
             OcrManager(FakeOcrEngine(), store),
             scannerManager,
+            FakeFolderWriter(),
         )
 
         composeRule.setContent {
@@ -180,6 +183,7 @@ class DocumentDetailScreenRescanTest {
             FakePdfGenerator(),
             OcrManager(FakeOcrEngine(), store),
             scannerManager,
+            FakeFolderWriter(),
         )
 
         composeRule.setContent {

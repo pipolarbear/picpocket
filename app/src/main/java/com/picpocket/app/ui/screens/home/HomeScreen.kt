@@ -2,11 +2,15 @@ package com.picpocket.app.ui.screens.home
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,7 +37,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
-import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.filled.Search
@@ -43,7 +48,10 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -51,6 +59,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -61,16 +70,26 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -79,6 +98,7 @@ import androidx.compose.foundation.layout.FlowRow
 import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.Tag
 import com.picpocket.app.domain.export.PageSize
+import com.picpocket.app.R
 import com.picpocket.app.ui.components.MatchMode
 import com.picpocket.app.ui.components.ShareOptionsSheet
 import com.picpocket.app.data.model.DocumentId
@@ -95,6 +115,7 @@ fun HomeScreen(
     onScanClick: () -> Unit,
     onDocumentClick: (DocumentId) -> Unit,
     onSettingsClick: () -> Unit,
+    onWorkflowsClick: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -129,6 +150,9 @@ fun HomeScreen(
                 is HomeViewModel.ImportEvent.ShowError -> {
                     Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
                 }
+                is HomeViewModel.ImportEvent.ShowMessage -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -145,14 +169,30 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        if (state.selectionMode) {
-                            "${state.selectedDocumentIds.size} selected"
-                        } else {
-                            "PicPocket"
+                    Column {
+                        Text(
+                            if (state.selectionMode) {
+                                "${state.selectedDocumentIds.size} selected"
+                            } else {
+                                "PicPocket"
+                            },
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Black,
+                        )
+                        if (!state.selectionMode) {
+                            Text(
+                                "Your documents, pocketed.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
-                    )
+                    }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
                 actions = {
                     if (state.selectionMode) {
                         val allSelected = state.selectedDocumentIds.size == state.documents.size
@@ -244,7 +284,7 @@ fun HomeScreen(
                         IconButton(onClick = {
                             importPdfLauncher.launch(arrayOf("application/pdf"))
                         }) {
-                            Icon(Icons.Default.Add, contentDescription = "Import PDF")
+                            Icon(Icons.Default.FileOpen, contentDescription = "Import PDF")
                         }
                         IconButton(onClick = onSettingsClick) {
                             Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -254,8 +294,17 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            if (!state.selectionMode) {
-                FloatingActionButton(onClick = onScanClick) {
+            if (!state.selectionMode && state.documents.isNotEmpty()) {
+                FloatingActionButton(
+                    onClick = onScanClick,
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 6.dp,
+                        pressedElevation = 10.dp,
+                    ),
+                ) {
                     Icon(Icons.Default.Add, contentDescription = "Scan document")
                 }
             }
@@ -280,14 +329,13 @@ fun HomeScreen(
                     Row {
                         IconButton(onClick = { viewModel.toggleSearchInContent() }) {
                             Icon(
-                                if (state.searchInContent) Icons.AutoMirrored.Filled.TextSnippet
-                                else Icons.Default.FilterList,
+                                Icons.AutoMirrored.Filled.TextSnippet,
                                 contentDescription = if (state.searchInContent) "Search names only"
                                 else "Search in content",
                                 tint = if (state.searchInContent)
                                     MaterialTheme.colorScheme.primary
                                 else
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         IconButton(onClick = { viewModel.showTagFilterSheet() }) {
@@ -311,9 +359,15 @@ fun HomeScreen(
                     }
                 },
                 singleLine = true,
+                shape = CircleShape,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
             )
 
@@ -338,32 +392,91 @@ fun HomeScreen(
                 }
             }
 
+            if (state.deferredCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${state.deferredCount} workflow run(s) waiting for network",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onWorkflowsClick) { Text("View") }
+                }
+            }
+
             if (state.isLoading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Loading...")
                 }
             } else if (state.documents.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 96.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Description,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                        )
-                        Spacer(Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(104.dp)
+                                .clip(RoundedCornerShape(32.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(
+                                            MaterialTheme.colorScheme.primaryContainer,
+                                            MaterialTheme.colorScheme.secondaryContainer,
+                                        ),
+                                    ),
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.ic_launcher_foreground),
+                                contentDescription = null,
+                                modifier = Modifier.size(82.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(20.dp))
                         Text(
                             if (state.searchQuery.isNotEmpty()) "No documents match your search"
                             else "No documents yet",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            if (state.searchQuery.isNotEmpty()) {
+                                "Try a different name or filter."
+                            } else {
+                                "Scan a document to get started.\nEverything stays on this device."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
                         )
                         if (state.searchQuery.isBlank()) {
-                            Text(
-                                "Tap + to scan your first document",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                            )
+                            Spacer(Modifier.height(20.dp))
+                            Button(
+                                onClick = onScanClick,
+                                shape = CircleShape,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondary,
+                                    contentColor = MaterialTheme.colorScheme.onSecondary,
+                                ),
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Scan a document")
+                            }
                         }
                     }
                 }
@@ -379,6 +492,7 @@ fun HomeScreen(
                             tags = state.documentTags[document.id].orEmpty(),
                             isSelected = document.id in state.selectedDocumentIds,
                             selectionMode = state.selectionMode,
+                            loadThumbnail = viewModel::thumbnail,
                             onClick = {
                                 if (viewModel.onDocumentTap(document.id)) {
                                     onDocumentClick(document.id)
@@ -496,6 +610,21 @@ fun HomeScreen(
         )
     }
 
+    if (state.savingToShareTarget) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Saving to Drive") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text("Writing the PDF…")
+                }
+            },
+            confirmButton = {},
+        )
+    }
+
     if (state.showImportProgress) {
         AlertDialog(
             onDismissRequest = {},
@@ -579,6 +708,7 @@ private fun DocumentCard(
     tags: List<Tag>,
     isSelected: Boolean,
     selectionMode: Boolean,
+    loadThumbnail: suspend (Document) -> Bitmap?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -598,7 +728,14 @@ private fun DocumentCard(
                 onClick = onClick,
                 onLongClick = onLongClick,
             ),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = bgColor),
+        shape = RoundedCornerShape(24.dp),
+        border = if (isSelected) {
+            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            null
+        },
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 0.dp else 1.dp),
     ) {
         Row(
             modifier = Modifier
@@ -613,12 +750,7 @@ private fun DocumentCard(
                     modifier = Modifier.padding(end = 12.dp),
                 )
             }
-            Icon(
-                Icons.Default.Description,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(40.dp),
-            )
+            DocumentThumbnail(document = document, load = loadThumbnail)
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -634,13 +766,13 @@ private fun DocumentCard(
                         Text(
                             "OCR pending",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier
                                 .background(
-                                    MaterialTheme.colorScheme.tertiaryContainer,
-                                    RoundedCornerShape(4.dp),
+                                    MaterialTheme.colorScheme.secondaryContainer,
+                                    RoundedCornerShape(8.dp),
                                 )
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
                         )
                     }
                 }
@@ -648,6 +780,7 @@ private fun DocumentCard(
                 Text(
                     text = formatDate(document.updatedAt),
                     style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (tags.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
@@ -656,8 +789,8 @@ private fun DocumentCard(
                             val dotColor = TagColors.getOrElse(tag.colorIndex) { TagColors[0] }
                             Box(
                                 modifier = Modifier
-                                    .background(dotColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    .background(dotColor.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 7.dp, vertical = 3.dp),
                             ) {
                                 Text(
                                     text = tag.name,
@@ -671,12 +804,46 @@ private fun DocumentCard(
                             Text(
                                 text = "+${tags.size - 3}",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DocumentThumbnail(
+    document: Document,
+    load: suspend (Document) -> Bitmap?,
+) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, document.id, document.updatedAt) {
+        value = load(document)
+    }
+    Box(
+        modifier = Modifier
+            .size(width = 56.dp, height = 72.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val image = bitmap
+        if (image != null) {
+            Image(
+                bitmap = image.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_foreground),
+                contentDescription = null,
+                modifier = Modifier.size(44.dp),
+            )
         }
     }
 }

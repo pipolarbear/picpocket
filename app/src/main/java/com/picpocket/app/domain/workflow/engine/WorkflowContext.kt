@@ -7,6 +7,7 @@ import com.picpocket.app.data.repository.DocumentRepository
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.export.PdfGenerator
 import com.picpocket.app.domain.export.PdfResult
+import com.picpocket.app.domain.storage.FolderAccess
 import com.picpocket.app.domain.workflow.crypto.ArtifactCipher
 import com.picpocket.app.domain.workflow.model.Artifact
 import kotlinx.coroutines.flow.first
@@ -25,6 +26,7 @@ class WorkflowContext(
     val pdfGenerator: PdfGenerator,
     val cipher: ArtifactCipher,
     val foreground: ForegroundExecutor,
+    val folderAccess: FolderAccess,
     val pageSize: PageSize,
 ) {
     private val pdfMutex = Mutex()

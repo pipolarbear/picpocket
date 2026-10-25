@@ -19,6 +19,7 @@ import com.picpocket.app.domain.export.FakePdfGenerator
 import com.picpocket.app.domain.storage.FakeFolderAccess
 import com.picpocket.app.domain.workflow.FakeActionRegistry
 import com.picpocket.app.domain.workflow.FakeForegroundExecutor
+import com.picpocket.app.domain.workflow.FakeNetworkMonitor
 import com.picpocket.app.domain.workflow.RecordingAction
 import com.picpocket.app.domain.workflow.crypto.ArtifactCipher
 import com.picpocket.app.domain.workflow.engine.WorkflowEngine
@@ -57,10 +58,13 @@ class WorkflowEditorContentTest {
         val engine = WorkflowEngine(
             app = app,
             repository = docRepo,
+            workflowRepository = wfRepo,
             pdfGenerator = FakePdfGenerator(),
             cipher = ArtifactCipher(),
             foreground = FakeForegroundExecutor(),
             registry = FakeActionRegistry(actions.associateBy { it.type }),
+            folderAccess = folderAccess,
+            network = FakeNetworkMonitor(),
         )
         return WorkflowEditorViewModel(wfRepo, docRepo, engine, folderAccess)
     }
@@ -196,6 +200,8 @@ class WorkflowEditorContentTest {
             wfRepo.recordRun(
                 Workflow(id = workflowId, name = "w"),
                 TriggerEvent.DOC_CREATED,
+                "doc-1",
+                "Receipt",
                 0L,
                 RunResult(
                     status = RunStatus.PARTIAL_FAILURE,

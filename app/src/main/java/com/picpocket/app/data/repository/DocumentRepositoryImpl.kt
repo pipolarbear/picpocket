@@ -14,6 +14,7 @@ import com.picpocket.app.data.store.DocumentAccessStore
 import com.picpocket.app.data.store.DocumentStore
 import com.picpocket.app.data.store.PageNaming
 import com.picpocket.app.data.store.StoredDocument
+import com.picpocket.app.data.store.TrashedDocument
 import com.picpocket.app.data.workflow.DocumentEvent
 import com.picpocket.app.data.workflow.DocumentEventBus
 import com.picpocket.app.domain.workflow.model.TriggerEvent
@@ -268,6 +269,30 @@ class DocumentRepositoryImpl @Inject constructor(
             emit(TriggerEvent.DELETED, documentId)
         }
     }
+
+    override suspend fun moveDocumentToTrash(documentId: DocumentId): Result<Unit> {
+        return store.moveToTrash(documentId).onSuccess {
+            documentAccess.remove(listOf(documentId))
+            scope.launch { refreshDocuments() }
+            emit(TriggerEvent.DELETED, documentId)
+        }
+    }
+
+    override suspend fun restoreTrashedDocument(documentId: DocumentId): Result<Unit> {
+        return store.restoreFromTrash(documentId).onSuccess {
+            // A restore is not a new document: do not emit DOC_CREATED, or a
+            // workflow would immediately save and remove it again.
+            scope.launch { refreshDocuments() }
+        }
+    }
+
+    override suspend fun listTrashedDocuments(): Result<List<TrashedDocument>> =
+        store.listTrash()
+
+    override suspend fun deleteTrashedDocument(documentId: DocumentId): Result<Unit> =
+        store.deleteTrashed(documentId)
+
+    override suspend fun purgeTrash(retentionDays: Int): Int = store.purgeTrash(retentionDays)
 
     override suspend fun markDocumentAccessed(documentId: DocumentId) {
         documentAccess.touch(documentId)

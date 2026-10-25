@@ -23,4 +23,21 @@ data class WorkflowRunEntity(
     val finishedAt: Long,
     val status: String,
     val nodesJson: String,
+    val documentId: String? = null,
+    val documentName: String? = null,
+)
+
+/**
+ * A workflow run deferred because the device was offline. Replayed by the queue
+ * worker once a network connection returns.
+ */
+@Entity(tableName = "workflow_pending_runs")
+data class WorkflowPendingRunEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val workflowId: Long,
+    val workflowName: String,
+    val trigger: String,
+    val documentId: String,
+    val documentName: String? = null,
+    val createdAt: Long,
 )

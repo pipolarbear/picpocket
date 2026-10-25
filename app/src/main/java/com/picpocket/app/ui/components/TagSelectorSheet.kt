@@ -80,7 +80,7 @@ fun TagSelectorSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     ) {
         Column(
             modifier = Modifier
@@ -226,9 +226,9 @@ fun TagChip(
     val chipColor = TagColors.getOrElse(tag.colorIndex) { TagColors[0] }
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(chipColor.copy(alpha = 0.15f))
-            .padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            .clip(RoundedCornerShape(20.dp))
+            .background(chipColor.copy(alpha = 0.14f))
+            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -237,10 +237,10 @@ fun TagChip(
                 .clip(CircleShape)
                 .background(chipColor),
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(7.dp))
         Text(
             tag.name,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             color = chipColor,
         )
         IconButton(

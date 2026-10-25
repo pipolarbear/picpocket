@@ -77,3 +77,16 @@ data class Workflow(
     fun referencesTag(tagId: Long): Boolean =
         conditions.any { it is Condition.HasTag && it.tagId == tagId }
 }
+
+/** Every node in the forest, roots first. */
+fun Workflow.allNodes(): List<ActionNode> = roots.flatMap { it.flatten() }
+
+/** The display name of the folder this workflow saves to, if it has a save step. */
+fun Workflow.saveTargetName(): String? =
+    allNodes().firstOrNull { it.type == ActionType.SAVE_TO_FOLDER }
+        ?.params
+        ?.let { it as? ActionParams.SaveToFolder }
+        ?.displayName
+
+internal fun ActionNode.flatten(): List<ActionNode> =
+    listOf(this) + children.flatMap { it.flatten() }

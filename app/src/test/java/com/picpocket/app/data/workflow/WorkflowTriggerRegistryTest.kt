@@ -5,12 +5,15 @@ import androidx.test.core.app.ApplicationProvider
 import com.picpocket.app.data.FakeDocumentRepository
 import com.picpocket.app.data.FakeWorkflowRepository
 import com.picpocket.app.domain.export.FakePdfGenerator
+import com.picpocket.app.domain.storage.FakeFolderAccess
 import com.picpocket.app.domain.workflow.FakeActionRegistry
 import com.picpocket.app.domain.workflow.FakeForegroundExecutor
+import com.picpocket.app.domain.workflow.FakeNetworkMonitor
 import com.picpocket.app.domain.workflow.RecordingAction
 import com.picpocket.app.domain.workflow.crypto.ArtifactCipher
 import com.picpocket.app.domain.workflow.engine.WorkflowEngine
 import com.picpocket.app.domain.workflow.model.ActionNode
+import com.picpocket.app.domain.workflow.model.ActionParams
 import com.picpocket.app.domain.workflow.model.ActionResult
 import com.picpocket.app.domain.workflow.model.ActionType
 import com.picpocket.app.domain.workflow.model.NodeStatus
@@ -34,16 +37,33 @@ class WorkflowTriggerRegistryTest {
     private val workflowRepo = FakeWorkflowRepository()
     private val bus = DocumentEventBus()
 
-    private fun registry(actions: List<RecordingAction>, scope: CoroutineScope): WorkflowTriggerRegistry {
+    private fun registry(
+        actions: List<RecordingAction>,
+        scope: CoroutineScope,
+        network: FakeNetworkMonitor = FakeNetworkMonitor(),
+        folderAccess: FakeFolderAccess = FakeFolderAccess(),
+        activityBus: WorkflowActivityBus = WorkflowActivityBus(),
+    ): WorkflowTriggerRegistry {
         val engine = WorkflowEngine(
             app = app,
             repository = repo,
+            workflowRepository = workflowRepo,
             pdfGenerator = FakePdfGenerator(),
             cipher = ArtifactCipher(),
             foreground = FakeForegroundExecutor(),
             registry = FakeActionRegistry(actions.associateBy { it.type }),
+            folderAccess = folderAccess,
+            network = network,
         )
-        return WorkflowTriggerRegistry(bus, repo, workflowRepo, engine, scope)
+        return WorkflowTriggerRegistry(
+            bus = bus,
+            documentRepository = repo,
+            workflowRepository = workflowRepo,
+            engine = engine,
+            activityBus = activityBus,
+            notifier = WorkflowRunNotifier(app),
+            scope = scope,
+        )
     }
 
     private fun registry(action: RecordingAction, scope: CoroutineScope) =
@@ -154,5 +174,62 @@ class WorkflowTriggerRegistryTest {
         assertEquals(RunStatus.PARTIAL_FAILURE, run.status)
         assertTrue(run.nodes.any { it.status == NodeStatus.FAILED && it.reason == "boom" })
         assertTrue(run.nodes.any { it.nodeId == "good" && it.status == NodeStatus.SUCCESS })
+    }
+
+    @Test
+    fun `an offline network run is recorded as deferred and queued`() = runTest {
+        repo.seedDocument("doc-1", "Receipt")
+        val network = FakeNetworkMonitor(online = false)
+        val folderAccess = FakeFolderAccess().apply {
+            remoteAuthorities.add("com.google.android.apps.docs.storage")
+        }
+        val save = RecordingAction(ActionType.SAVE_TO_FOLDER, needsNetwork = true)
+        workflowRepo.save(
+            Workflow(
+                name = "receipts",
+                triggers = listOf(TriggerEvent.DOC_CREATED),
+                roots = listOf(
+                    ActionNode(
+                        "save",
+                        ActionType.SAVE_TO_FOLDER,
+                        params = ActionParams.SaveToFolder(
+                            "content://com.google.android.apps.docs.storage/tree/drive",
+                            "Drive",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        registry(listOf(save), this, network, folderAccess)
+            .handle(DocumentEvent(TriggerEvent.DOC_CREATED, "doc-1"))
+
+        assertEquals(0, save.runs)
+        assertEquals(1, workflowRepo.listDeferred().size)
+        val run = workflowRepo.observeRuns(1L).first().single()
+        assertEquals(RunStatus.DEFERRED, run.status)
+        assertTrue(run.nodes.all { it.status == NodeStatus.DEFERRED })
+    }
+
+    @Test
+    fun `a failed run publishes its reason for the UI`() = runTest {
+        repo.seedDocument("doc-1", "Receipt")
+        val activityBus = WorkflowActivityBus()
+        val failing = RecordingAction(ActionType.ENCRYPT, result = ActionResult.Failure("boom"))
+        workflowRepo.save(
+            Workflow(
+                name = "receipts",
+                triggers = listOf(TriggerEvent.DOC_CREATED),
+                roots = listOf(ActionNode("bad", ActionType.ENCRYPT)),
+            ),
+        )
+
+        registry(listOf(failing), this, activityBus = activityBus)
+            .handle(DocumentEvent(TriggerEvent.DOC_CREATED, "doc-1"))
+
+        val activity = activityBus.lastFor("doc-1")
+        assertEquals(RunStatus.FAILURE, activity?.status)
+        assertEquals("boom", activity?.failureReason)
+        assertEquals("receipts", activity?.workflowName)
     }
 }

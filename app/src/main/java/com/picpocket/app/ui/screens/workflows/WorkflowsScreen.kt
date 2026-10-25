@@ -111,6 +111,16 @@ fun WorkflowsScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             ) {
+                if (state.deferredCount > 0) {
+                    item {
+                        Text(
+                            "Waiting for network: ${state.deferredCount} queued run(s)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                        )
+                    }
+                }
                 items(state.workflows, key = { it.id }) { workflow ->
                     WorkflowRow(
                         workflow = workflow,

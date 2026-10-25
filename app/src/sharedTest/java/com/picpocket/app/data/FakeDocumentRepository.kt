@@ -6,6 +6,7 @@ import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
 import com.picpocket.app.data.model.Tag
 import com.picpocket.app.data.repository.DocumentRepository
+import com.picpocket.app.data.store.TrashedDocument
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -175,6 +176,44 @@ class FakeDocumentRepository : DocumentRepository {
     override suspend fun deleteDocument(documentId: DocumentId): Result<Unit> {
         if (failDeleteDocument) return Result.failure(Exception("delete failed"))
         return deleteDocuments(listOf(documentId))
+    }
+
+    private val trashed = mutableMapOf<DocumentId, TrashedDocument>()
+
+    override suspend fun moveDocumentToTrash(documentId: DocumentId): Result<Unit> {
+        if (failDeleteDocument) return Result.failure(Exception("delete failed"))
+        val doc = documents.value.find { it.id == documentId }
+            ?: return Result.failure(Exception("Document not found"))
+        documents.value = documents.value.filter { it.id != documentId }
+        pageLists.remove(documentId)
+        trashed[documentId] = TrashedDocument(
+            id = doc.id,
+            name = doc.name,
+            pageCount = doc.pageCount,
+            trashedAt = System.currentTimeMillis(),
+        )
+        return Result.success(Unit)
+    }
+
+    override suspend fun restoreTrashedDocument(documentId: DocumentId): Result<Unit> {
+        val doc = trashed.remove(documentId)
+            ?: return Result.failure(Exception("Document is not in trash"))
+        seedDocument(doc.id, doc.name)
+        return Result.success(Unit)
+    }
+
+    override suspend fun listTrashedDocuments(): Result<List<TrashedDocument>> =
+        Result.success(trashed.values.toList())
+
+    override suspend fun deleteTrashedDocument(documentId: DocumentId): Result<Unit> {
+        trashed.remove(documentId)
+        return Result.success(Unit)
+    }
+
+    override suspend fun purgeTrash(retentionDays: Int): Int {
+        val count = trashed.size
+        trashed.clear()
+        return count
     }
 
     override suspend fun deletePage(documentId: DocumentId, pageNumber: Int): Result<Unit> {

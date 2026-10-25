@@ -49,6 +49,7 @@ fun PicPocketNavGraph(navController: NavHostController) {
                 onScanClick = { navController.navigate(Routes.SCANNER) },
                 onDocumentClick = { docId -> navController.navigate(Routes.documentDetail(docId)) },
                 onSettingsClick = { navController.navigate(Routes.SETTINGS) },
+                onWorkflowsClick = { navController.navigate(Routes.workflows()) },
             )
         }
         composable(Routes.SCANNER) {
@@ -113,6 +114,7 @@ fun PicPocketNavGraph(navController: NavHostController) {
                 onWorkflowsClick = { navController.navigate(Routes.workflows()) },
                 onSyncClick = { navController.navigate(Routes.SYNC) },
                 onTracingClick = { navController.navigate(Routes.TRACING) },
+                onDeletedClick = { navController.navigate(Routes.DELETED) },
             )
         }
         composable(Routes.TRACING) {

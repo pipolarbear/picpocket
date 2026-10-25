@@ -5,6 +5,7 @@ import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
 import com.picpocket.app.data.model.Tag
+import com.picpocket.app.data.store.TrashedDocument
 import kotlinx.coroutines.flow.Flow
 
 interface DocumentRepository {
@@ -23,6 +24,13 @@ interface DocumentRepository {
     suspend fun deleteDocumentsByName(name: String): Result<Unit>
     suspend fun deleteDocuments(documentIds: List<DocumentId>): Result<Unit>
     suspend fun deleteDocument(documentId: DocumentId): Result<Unit>
+
+    /** Moves a workflow-deleted document into the recoverable local trash. */
+    suspend fun moveDocumentToTrash(documentId: DocumentId): Result<Unit>
+    suspend fun restoreTrashedDocument(documentId: DocumentId): Result<Unit>
+    suspend fun listTrashedDocuments(): Result<List<TrashedDocument>>
+    suspend fun deleteTrashedDocument(documentId: DocumentId): Result<Unit>
+    suspend fun purgeTrash(retentionDays: Int): Int
     suspend fun deletePage(documentId: DocumentId, pageNumber: Int): Result<Unit>
     suspend fun replacePages(documentId: DocumentId, keptFilenames: List<String>): Result<Unit>
     suspend fun reorderPages(documentId: DocumentId, pageNumbers: List<Int>): Result<Unit>

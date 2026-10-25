@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material3.AlertDialog
@@ -51,7 +52,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.scan.QualityTier
 import com.picpocket.app.ui.theme.DarkMode
-import com.picpocket.app.ui.theme.Palette
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +62,7 @@ fun SettingsScreen(
     onWorkflowsClick: () -> Unit = {},
     onSyncClick: () -> Unit = {},
     onTracingClick: () -> Unit = {},
+    onDeletedClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -127,41 +128,6 @@ fun SettingsScreen(
                     }
 
                     Spacer(Modifier.height(12.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Palette", modifier = Modifier.weight(1f))
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Row(Modifier.selectableGroup()) {
-                        Palette.entries.forEach { palette ->
-                            Row(
-                                Modifier
-                                    .weight(1f)
-                                    .selectable(
-                                        selected = state.palette == palette,
-                                        onClick = { viewModel.setPalette(palette) },
-                                        role = Role.RadioButton,
-                                    )
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                RadioButton(
-                                    selected = state.palette == palette,
-                                    onClick = null,
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    when (palette) {
-                                        Palette.ROYAL -> "Royal"
-                                        Palette.DEFAULT -> "Blue"
-                                        Palette.OCEAN -> "Teal"
-                                        Palette.FOREST -> "Green"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
-                    }
                 }
             }
 
@@ -355,6 +321,38 @@ fun SettingsScreen(
                         )
                         Text(
                             "Automate document actions on events.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onDeletedClick),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.DeleteSweep,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Recently deleted",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            "Restore documents removed by workflows.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

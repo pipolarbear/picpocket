@@ -14,4 +14,11 @@ interface WorkflowAction {
     val type: ActionType
     val execution: Execution
     suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult
+
+    /**
+     * True when this action needs a network connection to do its job, so a run
+     * that hits it while the device is offline should be queued rather than
+     * executed. Local-only actions leave the default of false.
+     */
+    fun requiresNetwork(ctx: WorkflowContext, params: ActionParams): Boolean = false
 }

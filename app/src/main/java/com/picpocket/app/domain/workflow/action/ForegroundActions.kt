@@ -22,6 +22,8 @@ class SendToAppAction @Inject constructor() : WorkflowAction {
     override val type = ActionType.SEND_TO_APP
     override val execution = Execution.FOREGROUND
 
+    override fun requiresNetwork(ctx: WorkflowContext, params: ActionParams): Boolean = true
+
     override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult {
         val app = params as? ActionParams.SendToApp
             ?: return ActionResult.Failure("send-to-app: app not configured")
