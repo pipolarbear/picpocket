@@ -583,7 +583,7 @@ class HomeViewModel @Inject constructor(
             folderWriter.write(folderUri, name, "application/pdf", pdfUri)
         }
         result.fold(
-            onSuccess = { written += name },
+            onSuccess = { saved -> written += saved.name },
             onFailure = { failed += "${doc.name}: ${it.message ?: "unknown error"}" },
         )
     }

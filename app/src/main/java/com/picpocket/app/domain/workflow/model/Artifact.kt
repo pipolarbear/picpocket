@@ -5,7 +5,7 @@ data class Artifact(val uri: String, val mime: String)
 
 /** Outcome of a single action. */
 sealed interface ActionResult {
-    data class Success(val artifact: Artifact) : ActionResult
+    data class Success(val artifact: Artifact, val note: String? = null) : ActionResult
     data object Skip : ActionResult
     data class Failure(val reason: String) : ActionResult
 }
@@ -20,6 +20,8 @@ data class NodeResult(
     val status: NodeStatus,
     val reason: String? = null,
     val durationMs: Long = 0,
+    /** Extra success detail, e.g. the name/size of the saved file. */
+    val note: String? = null,
 )
 
 enum class RunStatus { SUCCESS, PARTIAL_FAILURE, FAILURE, DEFERRED }

@@ -14,6 +14,7 @@ import com.picpocket.app.domain.workflow.model.ActionParams
 import com.picpocket.app.domain.workflow.model.ActionResult
 import com.picpocket.app.domain.workflow.model.Artifact
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,6 +44,19 @@ class DeleteActionTest {
         val result = action.execute(context(), Artifact("file://x", "application/pdf"), ActionParams.None)
         assertTrue(result is ActionResult.Success)
         assertTrue("document must be gone", repo.getDocument("doc-1").isFailure)
+    }
+
+    @Test
+    fun `moves the document to recoverable trash with a note`() = runTest {
+        repo.seedDocument("doc-1", "Doc")
+
+        val result = action.execute(context(), Artifact("file://x", "application/pdf"), ActionParams.None)
+
+        assertTrue(result is ActionResult.Success)
+        assertTrue(
+            (result as ActionResult.Success).note!!.contains("Recently deleted"),
+        )
+        assertEquals(1, repo.listTrashedDocuments().getOrThrow().size)
     }
 
     @Test

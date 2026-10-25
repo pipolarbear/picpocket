@@ -28,6 +28,14 @@ data class StoredDocument(
     val syncExclude: Boolean = false,
 )
 
+/** A document moved to the local trash by a workflow delete. */
+data class TrashedDocument(
+    val id: String,
+    val name: String,
+    val pageCount: Int,
+    val trashedAt: Long,
+)
+
 @Serializable
 data class StoredPage(
     val pageNumber: Int,
@@ -62,6 +70,9 @@ class DocumentStore @Inject constructor(
 
     private val documentsRoot: File
         get() = File(app.filesDir, "documents")
+
+    private val trashRoot: File
+        get() = File(app.filesDir, "trash")
 
     fun documentDir(documentId: String): File =
         File(documentsRoot, documentId)
@@ -176,6 +187,81 @@ class DocumentStore @Inject constructor(
             documentDir(documentId).deleteRecursively()
             Result.success(Unit)
         } catch (e: Exception) { Result.failure(e) }
+    }
+
+    /** Moves a document out of the list and into the recoverable local trash. */
+    suspend fun moveToTrash(documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val source = documentDir(documentId)
+            if (!source.exists()) return@withContext Result.failure(Exception("Document not found"))
+            val trash = trashRoot.apply { mkdirs() }
+            val target = File(trash, documentId)
+            if (target.exists()) target.deleteRecursively()
+            if (!source.renameTo(target)) {
+                return@withContext Result.failure(Exception("Could not move the document to trash"))
+            }
+            target.setLastModified(System.currentTimeMillis())
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun restoreFromTrash(documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val source = File(trashRoot, documentId)
+            if (!source.exists()) return@withContext Result.failure(Exception("Document is not in trash"))
+            val target = documentDir(documentId)
+            if (target.exists()) return@withContext Result.failure(Exception("Document already exists"))
+            documentsRoot.mkdirs()
+            if (!source.renameTo(target)) {
+                return@withContext Result.failure(Exception("Could not restore the document"))
+            }
+            target.setLastModified(System.currentTimeMillis())
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun listTrash(): Result<List<TrashedDocument>> = withContext(Dispatchers.IO) {
+        try {
+            val root = trashRoot
+            if (!root.exists()) return@withContext Result.success(emptyList())
+            val docs = root.listFiles()
+                ?.filter { it.isDirectory }
+                ?.mapNotNull { dir ->
+                    val doc = decodeRawIn(dir) ?: return@mapNotNull null
+                    TrashedDocument(dir.name, doc.name, doc.pages.size, dir.lastModified())
+                }
+                ?.sortedByDescending { it.trashedAt }
+                ?: emptyList()
+            Result.success(docs)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun deleteTrashed(documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            File(trashRoot, documentId).deleteRecursively()
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun purgeTrash(retentionDays: Int): Int = withContext(Dispatchers.IO) {
+        val cutoff = System.currentTimeMillis() -
+            retentionDays.coerceAtLeast(1) * 24L * 60L * 60L * 1000L
+        var removed = 0
+        trashRoot.listFiles()
+            ?.filter { it.isDirectory && it.lastModified() < cutoff }
+            ?.forEach { if (it.deleteRecursively()) removed++ }
+        removed
+    }
+
+    private fun decodeRawIn(dir: File): StoredDocument? {
+        val metadata = dir.listFiles()
+            ?.mapNotNull { file -> MetadataNaming.parse(file.name)?.let { file.name to it.first } }
+            ?.maxByOrNull { it.second }
+            ?.first
+            ?: return null
+        return try {
+            json.decodeFromString<StoredDocument>(File(dir, metadata).readText())
+        } catch (e: Exception) { null }
     }
 
     /**

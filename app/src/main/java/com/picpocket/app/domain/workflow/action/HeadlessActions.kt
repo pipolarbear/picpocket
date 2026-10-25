@@ -3,6 +3,7 @@ package com.picpocket.app.domain.workflow.action
 import android.net.Uri
 import com.picpocket.app.domain.storage.FolderAccess
 import com.picpocket.app.domain.storage.FolderWriter
+import com.picpocket.app.domain.storage.TrashSettings
 import com.picpocket.app.domain.workflow.engine.WorkflowContext
 import com.picpocket.app.domain.workflow.model.ActionParams
 import com.picpocket.app.domain.workflow.model.ActionResult
@@ -74,7 +75,17 @@ class SaveToFolderAction @Inject constructor(
         val source = ctx.ensurePdf(input)
         val name = "${ctx.document.name.replace(" ", "_").replace("/", "_")}.${source.extension()}"
         return folderWriter.write(treeUri, name, source.mime, Uri.parse(source.uri)).fold(
-            onSuccess = { ActionResult.Success(source) },
+            onSuccess = { saved ->
+                val size = if (saved.size > 0) {
+                    android.text.format.Formatter.formatShortFileSize(ctx.app, saved.size)
+                } else {
+                    null
+                }
+                ActionResult.Success(
+                    source,
+                    note = "Saved as ${saved.name}" + (size?.let { " ($it)" } ?: ""),
+                )
+            },
             onFailure = {
                 ActionResult.Failure("save-to-folder: ${it.message ?: "could not write $name"}")
             },
@@ -82,16 +93,24 @@ class SaveToFolderAction @Inject constructor(
     }
 }
 
-/** Deletes the triggering document. Terminal: it never has dependents. */
+/** Moves the triggering document to the recoverable local trash. Terminal. */
 class DeleteAction @Inject constructor() : WorkflowAction {
     override val type = ActionType.DELETE
     override val execution = Execution.HEADLESS
 
-    override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult =
-        ctx.repository.deleteDocument(ctx.document.id).fold(
-            onSuccess = { input?.let { ActionResult.Success(it) } ?: ActionResult.Skip },
-            onFailure = { ActionResult.Failure("delete: ${it.message ?: "could not delete the document"}") },
+    override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult {
+        val days = TrashSettings.read(ctx.app)
+        return ctx.repository.moveDocumentToTrash(ctx.document.id).fold(
+            onSuccess = {
+                input?.let {
+                    ActionResult.Success(it, note = "Moved to Recently deleted (kept $days days)")
+                } ?: ActionResult.Skip
+            },
+            onFailure = {
+                ActionResult.Failure("delete: ${it.message ?: "could not move the document to trash"}")
+            },
         )
+    }
 }
 
 internal fun Artifact.readBytes(ctx: WorkflowContext): ByteArray {

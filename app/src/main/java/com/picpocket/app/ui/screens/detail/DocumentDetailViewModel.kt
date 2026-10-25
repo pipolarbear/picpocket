@@ -583,8 +583,8 @@ class DocumentDetailViewModel @Inject constructor(
             }
             _uiState.update { it.copy(savingToDrive = false) }
             result.fold(
-                onSuccess = {
-                    _messages.emit("Saved to ${folderWriter.displayName(folderUri)} as $name")
+                onSuccess = { saved ->
+                    _messages.emit("Saved to ${folderWriter.displayName(folderUri)} as ${saved.name}")
                 },
                 onFailure = {
                     _messages.emit("Could not save: ${it.message ?: "unknown error"}")

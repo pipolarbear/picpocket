@@ -85,6 +85,7 @@ class SaveToFolderActionTest {
         assertTrue(result is ActionResult.Success)
         assertEquals(1, folderWriter.writes.size)
         assertEquals("Doc.pdf", folderWriter.writes.single().name)
+        assertTrue((result as ActionResult.Success).note!!.contains("Doc.pdf"))
     }
 
     @Test

@@ -167,7 +167,8 @@ class WorkflowEngine @Inject constructor(
         val duration = System.currentTimeMillis() - start
         results.add(
             when (outcome) {
-                is ActionResult.Success -> NodeResult(node.id, node.type, NodeStatus.SUCCESS, null, duration)
+                is ActionResult.Success ->
+                    NodeResult(node.id, node.type, NodeStatus.SUCCESS, null, duration, outcome.note)
                 ActionResult.Skip -> NodeResult(node.id, node.type, NodeStatus.SKIPPED, null, duration)
                 is ActionResult.Failure -> NodeResult(node.id, node.type, NodeStatus.FAILED, outcome.reason, duration)
             },

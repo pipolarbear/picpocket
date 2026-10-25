@@ -295,8 +295,9 @@ private fun EditorBody(
                         else -> "✓"
                     }
                     val duration = node.durationMs.takeIf { it > 0 }?.let { " (${it}ms)" } ?: ""
+                    val detail = node.reason ?: node.note
                     Text(
-                        "  $mark ${node.type.label}$duration${node.reason?.let { ": $it" } ?: ""}",
+                        "  $mark ${node.type.label}$duration${detail?.let { ": $it" } ?: ""}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

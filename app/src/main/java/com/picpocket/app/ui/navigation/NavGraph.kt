@@ -114,6 +114,7 @@ fun PicPocketNavGraph(navController: NavHostController) {
                 onWorkflowsClick = { navController.navigate(Routes.workflows()) },
                 onSyncClick = { navController.navigate(Routes.SYNC) },
                 onTracingClick = { navController.navigate(Routes.TRACING) },
+                onDeletedClick = { navController.navigate(Routes.DELETED) },
             )
         }
         composable(Routes.TRACING) {
