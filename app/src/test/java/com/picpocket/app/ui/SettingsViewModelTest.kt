@@ -5,7 +5,6 @@ import com.picpocket.app.domain.export.PageSize
 
 import com.picpocket.app.ui.screens.settings.SettingsViewModel
 import com.picpocket.app.ui.theme.DarkMode
-import com.picpocket.app.ui.theme.Palette
 import com.picpocket.app.ui.theme.ThemeManager
 import com.picpocket.app.util.MainCoroutineRule
 import io.mockk.mockk
@@ -79,35 +78,6 @@ class SettingsViewModelTest {
     fun `set dark mode persists in ThemeManager`() {
         viewModel.setDarkMode(DarkMode.DARK)
         assertEquals(DarkMode.DARK, themeManager.config.value.darkMode)
-    }
-
-    @Test
-    fun `default palette is ROYAL`() {
-        assertEquals(Palette.ROYAL, viewModel.uiState.value.palette)
-    }
-
-    @Test
-    fun `set palette to OCEAN`() {
-        viewModel.setPalette(Palette.OCEAN)
-        assertEquals(Palette.OCEAN, viewModel.uiState.value.palette)
-    }
-
-    @Test
-    fun `set palette to FOREST`() {
-        viewModel.setPalette(Palette.FOREST)
-        assertEquals(Palette.FOREST, viewModel.uiState.value.palette)
-    }
-
-    @Test
-    fun `set palette to ROYAL`() {
-        viewModel.setPalette(Palette.ROYAL)
-        assertEquals(Palette.ROYAL, viewModel.uiState.value.palette)
-    }
-
-    @Test
-    fun `set palette persists in ThemeManager`() {
-        viewModel.setPalette(Palette.OCEAN)
-        assertEquals(Palette.OCEAN, themeManager.config.value.palette)
     }
 
     @Test

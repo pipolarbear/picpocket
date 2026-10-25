@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.rememberNavController
 import com.picpocket.app.drive.BiometricGate
 import com.picpocket.app.ui.navigation.PicPocketNavGraph
@@ -39,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private var authenticated by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         if (biometricGate.isRequired()) {
             biometricGate.authenticate(

@@ -4,6 +4,7 @@ package com.picpocket.app.domain.pdfimport
 
 import android.content.ContentResolver
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import com.picpocket.app.data.store.PageNaming
@@ -39,6 +40,9 @@ class PdfPageImporter @Inject constructor() {
             for (i in 0 until renderer.pageCount) {
                 val page = renderer.openPage(i)
                 val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                // PDFs with a transparent page background otherwise become black
+                // side bars once compressed to JPEG.
+                bitmap.eraseColor(Color.WHITE)
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 page.close()
 

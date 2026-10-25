@@ -3,26 +3,13 @@ package com.picpocket.app.ui.theme
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-
-private val LightColorScheme = DefaultLight
-private val DarkColorScheme = DefaultDark
-
-private fun pickPalette(palette: Palette, isDark: Boolean) = when (palette) {
-    Palette.ROYAL   -> if (isDark) RoyalDark else RoyalLight
-    Palette.DEFAULT -> if (isDark) DefaultDark else DefaultLight
-    Palette.OCEAN   -> if (isDark) OceanDark else OceanLight
-    Palette.FOREST  -> if (isDark) ForestDark else ForestLight
-}
 
 @Composable
 fun PicPocketTheme(
@@ -35,19 +22,23 @@ fun PicPocketTheme(
         DarkMode.LIGHT -> false
         DarkMode.DARK -> true
     }
-    val colorScheme = pickPalette(config.palette, isDark)
+    val colorScheme = if (isDark) InkDark else InkLight
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
+            window.statusBarColor = colorScheme.background.toArgb()
+            window.navigationBarColor = colorScheme.background.toArgb()
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !isDark
+            controller.isAppearanceLightNavigationBars = !isDark
         }
     }
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = Shapes,
         content = content,
     )
 }

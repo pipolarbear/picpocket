@@ -52,7 +52,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.scan.QualityTier
 import com.picpocket.app.ui.theme.DarkMode
-import com.picpocket.app.ui.theme.Palette
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,41 +128,6 @@ fun SettingsScreen(
                     }
 
                     Spacer(Modifier.height(12.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Palette", modifier = Modifier.weight(1f))
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Row(Modifier.selectableGroup()) {
-                        Palette.entries.forEach { palette ->
-                            Row(
-                                Modifier
-                                    .weight(1f)
-                                    .selectable(
-                                        selected = state.palette == palette,
-                                        onClick = { viewModel.setPalette(palette) },
-                                        role = Role.RadioButton,
-                                    )
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                RadioButton(
-                                    selected = state.palette == palette,
-                                    onClick = null,
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    when (palette) {
-                                        Palette.ROYAL -> "Royal"
-                                        Palette.DEFAULT -> "Blue"
-                                        Palette.OCEAN -> "Teal"
-                                        Palette.FOREST -> "Green"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
-                    }
                 }
             }
 

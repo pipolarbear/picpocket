@@ -4,7 +4,9 @@ import android.app.Application
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
+import android.util.LruCache
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,6 +18,7 @@ import com.picpocket.app.data.repository.WorkflowRepository
 import com.picpocket.app.di.SearchablePdf
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.export.PdfGenerator
+import com.picpocket.app.domain.render.PageThumbCache
 import com.picpocket.app.domain.storage.FolderWriter
 import com.picpocket.app.ui.components.MatchMode
 import com.picpocket.app.util.ZipUtil
@@ -49,6 +52,7 @@ enum class SortOrder(val label: String) {
 
 private const val KEY_SORT_ORDER = "home_sort_order"
 private const val KEY_SORT_REVERSED = "home_sort_reversed"
+private const val THUMBNAIL_WIDTH = 240
 
 data class HomeUiState(
     val documents: List<Document> = emptyList(),
@@ -90,6 +94,7 @@ class HomeViewModel @Inject constructor(
     private val repository: DocumentRepository,
     private val workflowRepository: WorkflowRepository,
     private val folderWriter: FolderWriter,
+    private val pageThumbCache: PageThumbCache,
     @SearchablePdf private val pdfGenerator: PdfGenerator,
 ) : AndroidViewModel(application) {
 
@@ -105,6 +110,22 @@ class HomeViewModel @Inject constructor(
 
     private val _filterTagIds = MutableStateFlow<Set<Long>>(emptySet())
     private val _filterMatchMode = MutableStateFlow(MatchMode.MATCH_ANY)
+
+    private val thumbnails = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    }
+
+    /** First-page thumbnail for the document list, cached by document revision. */
+    suspend fun thumbnail(document: Document): Bitmap? {
+        val key = "${document.id}:${document.updatedAt}"
+        thumbnails.get(key)?.let { return it }
+        val page = repository.getPages(document.id).getOrNull()
+            ?.minByOrNull { it.pageNumber }
+            ?: return null
+        val bitmap = pageThumbCache.thumbnail(page, targetWidth = THUMBNAIL_WIDTH) ?: return null
+        thumbnails.put(key, bitmap)
+        return bitmap
+    }
 
     private val _importEvents = MutableSharedFlow<ImportEvent>()
     val importEvents = _importEvents.asSharedFlow()

@@ -1,10 +1,13 @@
 package com.picpocket.app.ui
 
 import android.app.Application
+import android.graphics.Bitmap
 import android.net.Uri
 import com.picpocket.app.data.FakeDocumentRepository
 import com.picpocket.app.data.FakeWorkflowRepository
 import com.picpocket.app.domain.export.FakePdfGenerator
+import com.picpocket.app.domain.render.PageRenderer
+import com.picpocket.app.domain.render.PageThumbCache
 import com.picpocket.app.domain.storage.FakeFolderWriter
 import com.picpocket.app.domain.workflow.model.TriggerEvent
 import com.picpocket.app.domain.workflow.model.Workflow
@@ -16,6 +19,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -23,6 +29,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @ExperimentalCoroutinesApi
@@ -33,14 +40,43 @@ class HomeViewModelTest {
 
     private lateinit var repo: FakeDocumentRepository
     private lateinit var workflowRepo: FakeWorkflowRepository
+    private lateinit var app: Application
     private lateinit var viewModel: HomeViewModel
 
     @Before
     fun setUp() {
         repo = FakeDocumentRepository()
         workflowRepo = FakeWorkflowRepository()
-        val app = RuntimeEnvironment.getApplication() as Application
-        viewModel = HomeViewModel(app, repo, workflowRepo, FakeFolderWriter(), FakePdfGenerator())
+        app = RuntimeEnvironment.getApplication() as Application
+        viewModel = HomeViewModel(
+            app,
+            repo,
+            workflowRepo,
+            FakeFolderWriter(),
+            PageThumbCache(app, PageRenderer()),
+            FakePdfGenerator(),
+        )
+    }
+
+    @Test
+    fun `thumbnail is null when the document has no pages`() = runTest {
+        val id = repo.createDocument("Empty").getOrThrow()
+        assertNull(viewModel.thumbnail(repo.getDocument(id).getOrThrow()))
+    }
+
+    @Test
+    fun `thumbnail renders the first page and caches it`() = runTest {
+        val id = repo.createDocument("Doc").getOrThrow()
+        val file = File(app.cacheDir, "thumbnail-test-${System.nanoTime()}.png")
+        val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        repo.addPage(id, file.toURI().toString())
+
+        val doc = repo.getDocument(id).getOrThrow()
+        val first = viewModel.thumbnail(doc)
+        assertNotNull(first)
+        assertSame(first, viewModel.thumbnail(doc))
     }
 
     @Test
