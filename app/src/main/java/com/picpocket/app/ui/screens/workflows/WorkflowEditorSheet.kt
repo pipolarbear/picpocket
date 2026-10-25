@@ -52,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.input.KeyboardType
@@ -160,13 +161,10 @@ fun WorkflowEditorContent(
                 Spacer(Modifier.weight(1f))
                 state.runs.firstOrNull()?.let { run ->
                     Text(
-                        "Last run: ${runStatusLabel(run.status)}",
+                        "Last run: ${runStatusLabel(run.status)}" +
+                            (run.documentName?.let { " · $it" } ?: ""),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (run.status == RunStatus.SUCCESS) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
+                        color = runStatusColor(run.status),
                     )
                 }
             }
@@ -284,17 +282,18 @@ private fun EditorBody(
             }
             state.runs.forEach { run ->
                 val finished = run.finishedAt.let { if (it > 0) DateFormat.getTimeInstance().format(Date(it)) else "" }
+                val document = run.documentName?.let { " · $it" } ?: ""
                 Text(
-                    "${runStatusLabel(run.status)} · ${run.trigger.label} · $finished",
+                    "${runStatusLabel(run.status)} · ${run.trigger.label}$document · $finished",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (run.status == RunStatus.SUCCESS) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
+                    color = runStatusColor(run.status),
                 )
                 run.nodes.forEach { node ->
-                    val mark = if (node.status == NodeStatus.FAILED) "✗" else "✓"
+                    val mark = when (node.status) {
+                        NodeStatus.FAILED -> "✗"
+                        NodeStatus.DEFERRED -> "⏳"
+                        else -> "✓"
+                    }
                     val duration = node.durationMs.takeIf { it > 0 }?.let { " (${it}ms)" } ?: ""
                     Text(
                         "  $mark ${node.type.label}$duration${node.reason?.let { ": $it" } ?: ""}",
@@ -310,6 +309,14 @@ private fun runStatusLabel(status: RunStatus): String = when (status) {
     RunStatus.SUCCESS -> "Succeeded"
     RunStatus.PARTIAL_FAILURE -> "Partially failed"
     RunStatus.FAILURE -> "Failed"
+    RunStatus.DEFERRED -> "Deferred — waiting for network"
+}
+
+@Composable
+private fun runStatusColor(status: RunStatus): Color = when (status) {
+    RunStatus.SUCCESS -> MaterialTheme.colorScheme.onSurfaceVariant
+    RunStatus.DEFERRED -> MaterialTheme.colorScheme.tertiary
+    else -> MaterialTheme.colorScheme.error
 }
 
 @Composable

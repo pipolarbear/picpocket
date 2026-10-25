@@ -2,15 +2,20 @@ package com.picpocket.app.di
 
 import com.picpocket.app.data.local.PicPocketDatabase
 import com.picpocket.app.data.local.dao.WorkflowDao
+import com.picpocket.app.data.local.dao.WorkflowPendingRunDao
 import com.picpocket.app.data.local.dao.WorkflowRunDao
 import com.picpocket.app.data.repository.WorkflowRepository
 import com.picpocket.app.data.repository.WorkflowRepositoryImpl
+import com.picpocket.app.data.workflow.WorkManagerWorkflowQueueScheduler
 import com.picpocket.app.domain.workflow.action.ActionRegistry
 import com.picpocket.app.domain.workflow.action.DefaultActionRegistry
 import com.picpocket.app.domain.workflow.engine.AppForegroundExecutor
 import com.picpocket.app.domain.workflow.engine.ForegroundExecutor
+import com.picpocket.app.domain.workflow.queue.WorkflowQueueScheduler
 import com.picpocket.app.domain.storage.FolderAccess
+import com.picpocket.app.domain.storage.FolderWriter
 import com.picpocket.app.domain.storage.SafFolderAccess
+import com.picpocket.app.domain.storage.SafFolderWriter
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -34,7 +39,16 @@ object WorkflowModule {
 
     @Provides
     @Singleton
+    fun provideWorkflowPendingRunDao(database: PicPocketDatabase): WorkflowPendingRunDao =
+        database.workflowPendingRunDao()
+
+    @Provides
+    @Singleton
     fun provideWorkflowRepository(impl: WorkflowRepositoryImpl): WorkflowRepository = impl
+
+    @Provides
+    @Singleton
+    fun provideWorkflowQueueScheduler(impl: WorkManagerWorkflowQueueScheduler): WorkflowQueueScheduler = impl
 
     @Provides
     @Singleton
@@ -47,6 +61,10 @@ object WorkflowModule {
     @Provides
     @Singleton
     fun provideFolderAccess(impl: SafFolderAccess): FolderAccess = impl
+
+    @Provides
+    @Singleton
+    fun provideFolderWriter(impl: SafFolderWriter): FolderWriter = impl
 
     @Provides
     @Singleton

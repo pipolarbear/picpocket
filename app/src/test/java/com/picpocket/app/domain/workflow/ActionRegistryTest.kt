@@ -1,6 +1,7 @@
 package com.picpocket.app.domain.workflow
 
 import com.picpocket.app.domain.storage.FakeFolderAccess
+import com.picpocket.app.domain.storage.FakeFolderWriter
 import com.picpocket.app.domain.workflow.action.DefaultActionRegistry
 import com.picpocket.app.domain.workflow.action.DeleteAction
 import com.picpocket.app.domain.workflow.action.EncryptAction
@@ -17,7 +18,7 @@ class ActionRegistryTest {
     private val registry = DefaultActionRegistry(
         encrypt = EncryptAction(),
         zip = ZipAction(),
-        saveToFolder = SaveToFolderAction(FakeFolderAccess()),
+        saveToFolder = SaveToFolderAction(FakeFolderAccess(), FakeFolderWriter()),
         sendToApp = SendToAppAction(),
         notify = NotifyAction(),
         delete = DeleteAction(),

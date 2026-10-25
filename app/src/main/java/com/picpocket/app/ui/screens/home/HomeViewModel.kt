@@ -6,16 +6,17 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Tag
 import com.picpocket.app.data.repository.DocumentRepository
+import com.picpocket.app.data.repository.WorkflowRepository
 import com.picpocket.app.di.SearchablePdf
 import com.picpocket.app.domain.export.PageSize
 import com.picpocket.app.domain.export.PdfGenerator
+import com.picpocket.app.domain.storage.FolderWriter
 import com.picpocket.app.ui.components.MatchMode
 import com.picpocket.app.util.ZipUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.IOException
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -75,6 +77,10 @@ data class HomeUiState(
     val pendingExportDocIds: List<DocumentId> = emptyList(),
     val showRenameOverwriteDialog: Boolean = false,
     val renameOverwriteTargetName: String = "",
+    /** Workflow runs waiting for a network connection. */
+    val deferredCount: Int = 0,
+    /** A document is being written into a picked SAF folder. */
+    val savingToShareTarget: Boolean = false,
 )
 
 @HiltViewModel
@@ -82,6 +88,8 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     application: Application,
     private val repository: DocumentRepository,
+    private val workflowRepository: WorkflowRepository,
+    private val folderWriter: FolderWriter,
     @SearchablePdf private val pdfGenerator: PdfGenerator,
 ) : AndroidViewModel(application) {
 
@@ -104,6 +112,7 @@ class HomeViewModel @Inject constructor(
     sealed interface ImportEvent {
         data class NavigateToDocument(val documentId: DocumentId) : ImportEvent
         data class ShowError(val message: String) : ImportEvent
+        data class ShowMessage(val message: String) : ImportEvent
     }
 
     private val _allTags = repository.observeAllTags()
@@ -120,6 +129,12 @@ class HomeViewModel @Inject constructor(
     )
 
     init {
+        viewModelScope.launch {
+            workflowRepository.observeDeferredCount().collect { count ->
+                _uiState.update { it.copy(deferredCount = count) }
+            }
+        }
+
         viewModelScope.launch {
             _documentTagMap.collect { map ->
                 _uiState.update { it.copy(documentTags = map) }
@@ -529,10 +544,48 @@ class HomeViewModel @Inject constructor(
     fun saveToDrive(context: Context, folderUri: Uri) {
         val docs = getDocsToShare()
         if (docs.isEmpty()) return
+        _uiState.update { it.copy(savingToShareTarget = true) }
         viewModelScope.launch {
-            copyPdfsToDrive(context, folderUri, docs)
+            val written = mutableListOf<String>()
+            val failed = mutableListOf<String>()
+            if (docs.size == 1) {
+                writeOne(context, folderUri, docs.first(), written, failed)
+            } else {
+                folderWriter.createDirectory(folderUri, zipBaseName()).fold(
+                    onSuccess = { dir -> docs.forEach { writeOne(context, dir, it, written, failed) } },
+                    onFailure = { failed += (it.message ?: "could not create the folder") },
+                )
+            }
+            _uiState.update { it.copy(savingToShareTarget = false) }
+            val message = when {
+                failed.isEmpty() ->
+                    "Saved ${written.size} document(s) to ${folderWriter.displayName(folderUri)}"
+                written.isEmpty() -> "Could not save: ${failed.first()}"
+                else -> "Saved ${written.size}; ${failed.first()}"
+            }
+            _importEvents.emit(ImportEvent.ShowMessage(message))
         }
         if (!_uiState.value.shareFilteredDocs) exitSelectionMode()
+    }
+
+    private suspend fun writeOne(
+        context: Context,
+        folderUri: Uri,
+        doc: Document,
+        written: MutableList<String>,
+        failed: MutableList<String>,
+    ) {
+        val pdfUri = generateTempPdf(context, doc)
+        val name = "${doc.name.replace(" ", "_").replace("/", "_")}.pdf"
+        val result = if (pdfUri == null) {
+            Result.failure(IOException("could not generate the PDF"))
+        } else {
+            folderWriter.write(folderUri, name, "application/pdf", pdfUri)
+        }
+        result.fold(
+            onSuccess = { written += name },
+            onFailure = { failed += "${doc.name}: ${it.message ?: "unknown error"}" },
+        )
     }
 
     private fun getDocsToShare(): List<Document> {
@@ -591,46 +644,6 @@ class HomeViewModel @Inject constructor(
         }
         context.startActivity(Intent.createChooser(intent, "Share ZIP"))
         zipFile.delete()
-    }
-
-    private suspend fun copyPdfsToDrive(context: Context, folderUri: Uri, docs: List<Document>) {
-        try {
-            if (docs.size == 1) {
-                copySinglePdfToDrive(context, folderUri, docs.first())
-            } else {
-                copyMultiplePdfsToDrive(context, folderUri, docs)
-            }
-        } catch (_: Exception) { }
-    }
-
-    private suspend fun copySinglePdfToDrive(context: Context, folderUri: Uri, doc: Document) {
-        val pdfUri = generateTempPdf(context, doc) ?: return
-        val folder = DocumentFile.fromTreeUri(context, folderUri) ?: return
-        val safeName = doc.name.replace(" ", "_").replace("/", "_") + ".pdf"
-        val existing = folder.findFile(safeName)
-        if (existing != null) existing.delete()
-        val newFile = folder.createFile("application/pdf", safeName) ?: return
-        context.contentResolver.openInputStream(pdfUri)?.use { input ->
-            context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
-                input.copyTo(output)
-            }
-        }
-    }
-
-    private suspend fun copyMultiplePdfsToDrive(context: Context, folderUri: Uri, docs: List<Document>) {
-        val parent = DocumentFile.fromTreeUri(context, folderUri) ?: return
-        val dirName = zipBaseName()
-        val dir = parent.createDirectory(dirName) ?: return
-        for (doc in docs) {
-            val pdfUri = generateTempPdf(context, doc) ?: continue
-            val safeName = doc.name.replace(" ", "_").replace("/", "_") + ".pdf"
-            val newFile = dir.createFile("application/pdf", safeName) ?: continue
-            context.contentResolver.openInputStream(pdfUri)?.use { input ->
-                context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
-                    input.copyTo(output)
-                }
-            }
-        }
     }
 
     private fun zipBaseName(): String {

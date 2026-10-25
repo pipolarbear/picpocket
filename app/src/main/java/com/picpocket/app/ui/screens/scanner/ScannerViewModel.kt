@@ -269,7 +269,6 @@ class ScannerViewModel @Inject constructor(
     }
 
     fun toggleTag(tagId: Long) {
-        val docId = pendingDocumentId ?: return
         _uiState.update { state ->
             val newSet = if (tagId in state.selectedTagIds) {
                 state.selectedTagIds - tagId
@@ -278,17 +277,12 @@ class ScannerViewModel @Inject constructor(
             }
             state.copy(selectedTagIds = newSet)
         }
-        viewModelScope.launch {
-            repository.setDocumentTags(docId, _uiState.value.selectedTagIds.toList())
-        }
     }
 
     fun createTagAndSelect(name: String) {
-        val docId = pendingDocumentId ?: return
         viewModelScope.launch {
             val tagId = repository.createTag(name)
             _uiState.update { it.copy(selectedTagIds = it.selectedTagIds + tagId) }
-            repository.setDocumentTags(docId, (_uiState.value.selectedTagIds + tagId).toList())
         }
     }
 
@@ -331,8 +325,16 @@ class ScannerViewModel @Inject constructor(
 
     fun completeSave() {
         val docId = pendingDocumentId ?: return
+        val tagIds = _uiState.value.selectedTagIds.toList()
         pendingDocumentId = null
-        _uiState.update { it.copy(savedDocumentId = docId, showTagsDialog = false, capturedPages = emptyList()) }
+        viewModelScope.launch {
+            // Tags are applied once, on confirmation, so the workflow cannot run
+            // (and delete the document) while the tag sheet is still open.
+            repository.setDocumentTags(docId, tagIds)
+            _uiState.update {
+                it.copy(savedDocumentId = docId, showTagsDialog = false, capturedPages = emptyList())
+            }
+        }
     }
 
     fun confirmOverwrite() {

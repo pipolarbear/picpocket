@@ -2,6 +2,7 @@ package com.picpocket.app.di
 
 import android.content.Context
 import androidx.room.Room
+import com.picpocket.app.data.local.MIGRATIONS
 import com.picpocket.app.data.local.PicPocketDatabase
 import com.picpocket.app.data.local.dao.TagDao
 import com.picpocket.app.data.repository.DocumentRepository
@@ -12,6 +13,8 @@ import com.picpocket.app.domain.filter.ContrastFilter
 import com.picpocket.app.domain.filter.FilterPipeline
 import com.picpocket.app.domain.filter.GrayscaleFilter
 import com.picpocket.app.domain.filter.SharpenFilter
+import com.picpocket.app.domain.network.AndroidNetworkMonitor
+import com.picpocket.app.domain.network.NetworkMonitor
 import com.picpocket.app.domain.ocr.MlKitOcrEngine
 import com.picpocket.app.domain.ocr.OcrEngine
 import com.picpocket.app.domain.export.ImageOnlyPdfGenerator
@@ -43,8 +46,14 @@ object AppModule {
             context,
             PicPocketDatabase::class.java,
             "picpocket.db",
-        ).fallbackToDestructiveMigration().build()
+        )
+            .addMigrations(*MIGRATIONS)
+            .build()
     }
+
+    @Provides
+    @Singleton
+    fun provideNetworkMonitor(impl: AndroidNetworkMonitor): NetworkMonitor = impl
 
     @Provides
     fun provideTagDao(database: PicPocketDatabase): TagDao = database.tagDao()

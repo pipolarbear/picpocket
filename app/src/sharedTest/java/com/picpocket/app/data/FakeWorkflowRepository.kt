@@ -1,5 +1,6 @@
 package com.picpocket.app.data
 
+import com.picpocket.app.data.repository.DeferredRun
 import com.picpocket.app.data.repository.WorkflowRepository
 import com.picpocket.app.data.repository.WorkflowRun
 import com.picpocket.app.domain.workflow.model.RunResult
@@ -14,7 +15,10 @@ class FakeWorkflowRepository : WorkflowRepository {
 
     private val workflows = MutableStateFlow<List<Workflow>>(emptyList())
     private val runs = mutableListOf<WorkflowRun>()
+    private val deferred = mutableListOf<DeferredRun>()
+    private val deferredCount = MutableStateFlow(0)
     private var nextId = 1L
+    private var nextDeferredId = 1L
 
     override fun observeWorkflows(): Flow<List<Workflow>> = workflows
 
@@ -45,6 +49,8 @@ class FakeWorkflowRepository : WorkflowRepository {
     override suspend fun recordRun(
         workflow: Workflow,
         trigger: TriggerEvent,
+        documentId: String?,
+        documentName: String?,
         startedAt: Long,
         result: RunResult,
     ) {
@@ -58,6 +64,8 @@ class FakeWorkflowRepository : WorkflowRepository {
                 finishedAt = System.currentTimeMillis(),
                 status = result.status,
                 nodes = result.nodes,
+                documentId = documentId,
+                documentName = documentName,
             ),
         )
     }
@@ -68,4 +76,38 @@ class FakeWorkflowRepository : WorkflowRepository {
     override suspend fun clearHistory(workflowId: Long?) {
         if (workflowId == null) runs.clear() else runs.removeAll { it.workflowId == workflowId }
     }
+
+    override suspend fun enqueueDeferred(
+        workflow: Workflow,
+        trigger: TriggerEvent,
+        documentId: String,
+        documentName: String?,
+    ) {
+        deferred.add(
+            DeferredRun(
+                id = nextDeferredId++,
+                workflowId = workflow.id,
+                workflowName = workflow.name,
+                trigger = trigger,
+                documentId = documentId,
+                documentName = documentName,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+        deferredCount.value = deferred.size
+    }
+
+    override suspend fun listDeferred(): List<DeferredRun> = deferred.toList()
+
+    override suspend fun removeDeferred(id: Long) {
+        deferred.removeAll { it.id == id }
+        deferredCount.value = deferred.size
+    }
+
+    override suspend fun clearDeferredForWorkflow(workflowId: Long) {
+        deferred.removeAll { it.workflowId == workflowId }
+        deferredCount.value = deferred.size
+    }
+
+    override fun observeDeferredCount(): Flow<Int> = deferredCount
 }

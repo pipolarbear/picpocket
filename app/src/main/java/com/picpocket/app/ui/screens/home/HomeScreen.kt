@@ -95,6 +95,7 @@ fun HomeScreen(
     onScanClick: () -> Unit,
     onDocumentClick: (DocumentId) -> Unit,
     onSettingsClick: () -> Unit,
+    onWorkflowsClick: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -128,6 +129,9 @@ fun HomeScreen(
                 }
                 is HomeViewModel.ImportEvent.ShowError -> {
                     Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                }
+                is HomeViewModel.ImportEvent.ShowMessage -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -338,12 +342,28 @@ fun HomeScreen(
                 }
             }
 
+            if (state.deferredCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${state.deferredCount} workflow run(s) waiting for network",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onWorkflowsClick) { Text("View") }
+                }
+            }
+
             if (state.isLoading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Loading...")
                 }
-            } else if (state.documents.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            } else if (state.documents.isEmpty()) {                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             Icons.Default.Description,
@@ -493,6 +513,21 @@ fun HomeScreen(
                 viewModel.saveToDrive(context, uri)
                 viewModel.hideShareSheet()
             },
+        )
+    }
+
+    if (state.savingToShareTarget) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Saving to Drive") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text("Writing the PDF…")
+                }
+            },
+            confirmButton = {},
         )
     }
 

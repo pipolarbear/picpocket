@@ -7,6 +7,7 @@ class FakeFolderAccess : FolderAccess {
 
     val persisted = mutableSetOf<String>()
     val names = mutableMapOf<String, String>()
+    val remoteAuthorities = mutableSetOf<String>()
     var takeResult: Boolean = true
 
     fun persist(uri: String) {
@@ -21,4 +22,6 @@ class FakeFolderAccess : FolderAccess {
     override fun isPersisted(uri: Uri): Boolean = uri.toString() in persisted
 
     override fun displayName(uri: Uri): String = names[uri.toString()] ?: "Folder"
+
+    override fun isRemote(uri: Uri): Boolean = uri.authority in remoteAuthorities
 }

@@ -6,6 +6,7 @@ import com.picpocket.app.data.FakeDocumentRepository
 import com.picpocket.app.data.model.Document
 import com.picpocket.app.domain.export.FakePdfGenerator
 import com.picpocket.app.domain.export.PageSize
+import com.picpocket.app.domain.storage.FakeFolderAccess
 import com.picpocket.app.domain.workflow.FakeForegroundExecutor
 import com.picpocket.app.domain.workflow.crypto.ArtifactCipher
 import com.picpocket.app.domain.workflow.engine.WorkflowContext
@@ -36,6 +37,7 @@ class SendToAppActionTest {
         pdfGenerator = FakePdfGenerator(),
         cipher = ArtifactCipher(),
         foreground = FakeForegroundExecutor(),
+        folderAccess = FakeFolderAccess(),
         pageSize = PageSize.A4,
     )
 

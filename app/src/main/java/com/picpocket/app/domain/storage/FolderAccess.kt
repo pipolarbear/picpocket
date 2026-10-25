@@ -19,6 +19,13 @@ interface FolderAccess {
 
     /** A human-readable folder name for a tree URI, or "Folder" when it can't be resolved. */
     fun displayName(uri: Uri): String
+
+    /**
+     * True when [uri] points at a folder that lives somewhere other than the
+     * device (Drive, Nextcloud, etc.), so writing to it needs a network
+     * connection. Local providers are external storage, downloads and media.
+     */
+    fun isRemote(uri: Uri): Boolean
 }
 
 @Singleton
@@ -51,4 +58,15 @@ class SafFolderAccess @Inject constructor(
                 .getOrNull()
                 ?.takeIf { it.isNotBlank() }
             ?: "Folder"
+
+    override fun isRemote(uri: Uri): Boolean = uri.authority !in LOCAL_AUTHORITIES
+
+    private companion object {
+        /** SAF providers that store files on the device; everything else is remote. */
+        val LOCAL_AUTHORITIES = setOf(
+            "com.android.externalstorage.documents",
+            "com.android.providers.downloads.documents",
+            "com.android.providers.media.documents",
+        )
+    }
 }

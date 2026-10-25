@@ -15,6 +15,8 @@ import com.picpocket.app.data.model.Page
 import com.picpocket.app.data.model.Tag
 import com.picpocket.app.data.repository.DocumentRepository
 import com.picpocket.app.data.store.DocumentStore
+import com.picpocket.app.data.workflow.WorkflowActivity
+import com.picpocket.app.data.workflow.WorkflowActivityBus
 import com.picpocket.app.di.SearchablePdf
 import com.picpocket.app.domain.collate.Collate
 import com.picpocket.app.domain.collate.CollateAxis
@@ -27,6 +29,8 @@ import com.picpocket.app.domain.render.PageRenderer
 import com.picpocket.app.domain.render.PageThumbCache
 import com.picpocket.app.domain.scanner.ScannerManager
 import com.picpocket.app.domain.scanner.ScannerResult
+import com.picpocket.app.domain.storage.FolderWriter
+import com.picpocket.app.domain.workflow.model.RunStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,12 +44,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
+import java.io.IOException
 import javax.inject.Inject
 
 private const val COLLATE_RENDER_WIDTH = 1600
+private const val ACTIVITY_GRACE_MS = 700L
 
 data class DetailUiState(
     val document: Document? = null,
@@ -86,6 +93,7 @@ data class DetailUiState(
     val collateAxis: CollateAxis = CollateAxis.VERTICAL,
     val collateJoints: List<Int> = emptyList(),
     val collateResetToken: Int = 0,
+    val savingToDrive: Boolean = false,
 )
 
 
@@ -97,12 +105,24 @@ class DocumentDetailViewModel @Inject constructor(
     @SearchablePdf private val searchablePdfGenerator: PdfGenerator,
     private val ocrManager: OcrManager,
     private val scannerManager: ScannerManager,
+    private val folderWriter: FolderWriter,
     private val pageRenderer: PageRenderer = PageRenderer(),
     private val pageThumbCache: PageThumbCache? = null,
+    private val activityBus: WorkflowActivityBus = WorkflowActivityBus(),
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(DetailUiState())
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
+
+    private val _documentGone = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val documentGone = _documentGone.asSharedFlow()
+
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 2)
+    val messages = _messages.asSharedFlow()
+
+    private var goneReported = false
+    private var lastActivity: WorkflowActivity? = null
+    private var reportedActivity: WorkflowActivity? = null
 
     private val prefs = getApplication<Application>().getSharedPreferences("settings", 0)
 
@@ -124,17 +144,34 @@ class DocumentDetailViewModel @Inject constructor(
 
     fun loadDocument(documentId: DocumentId) {
         currentDocumentId = documentId
+        goneReported = false
+        lastActivity = null
+        reportedActivity = null
         viewModelScope.launch { repository.markDocumentAccessed(documentId) }
         viewModelScope.launch {
+            activityBus.events.collect { activity ->
+                if (activity.documentId == documentId) {
+                    lastActivity = activity
+                    reportActivity(activity)
+                }
+            }
+        }
+        reportActivity(activityBus.lastFor(documentId))
+        viewModelScope.launch {
             repository.observeDocument(documentId).collect { doc ->
+                if (doc == null) {
+                    _uiState.update { it.copy(document = null) }
+                    reportDocumentGone()
+                    return@collect
+                }
                 _uiState.update { it.copy(document = doc) }
-                if (doc != null && !doc.ocrComplete) {
+                if (!doc.ocrComplete) {
                     _uiState.update { it.copy(ocrRunning = true) }
                     launch {
                         ocrManager.runOcr(documentId)
                         _uiState.update { it.copy(ocrRunning = false) }
                     }
-                } else if (doc != null) {
+                } else {
                     _uiState.update { it.copy(ocrRunning = false) }
                 }
             }
@@ -161,6 +198,50 @@ class DocumentDetailViewModel @Inject constructor(
             val doc = documentStore.readMetadata(documentId).getOrNull()
             _uiState.update { it.copy(syncExcluded = doc?.syncExclude ?: false) }
         }
+    }
+
+    private fun reportActivity(activity: WorkflowActivity?) {
+        if (activity == null || activity === reportedActivity) return
+        reportedActivity = activity
+        when (activity.status) {
+            RunStatus.DEFERRED ->
+                _messages.tryEmit(
+                    "Workflow \"${activity.workflowName}\" is waiting for network; it will run automatically",
+                )
+            RunStatus.FAILURE, RunStatus.PARTIAL_FAILURE ->
+                _messages.tryEmit(
+                    "Workflow \"${activity.workflowName}\" failed: ${activity.failureReason ?: "unknown error"}",
+                )
+            RunStatus.SUCCESS -> Unit
+        }
+    }
+
+    /**
+     * Explains why a document that was on screen (or just navigated to) no
+     * longer exists. Waits briefly for the workflow registry to publish the
+     * run outcome, then emits a message for the screen to show before leaving.
+     */
+    private fun reportDocumentGone() {
+        if (goneReported) return
+        goneReported = true
+        viewModelScope.launch {
+            val known = lastActivity ?: activityBus.lastFor(currentDocumentId)
+            val activity = known ?: withTimeoutOrNull(ACTIVITY_GRACE_MS) {
+                activityBus.events.first { it.documentId == currentDocumentId }
+            } ?: activityBus.lastFor(currentDocumentId)
+            _documentGone.emit(messageFor(activity))
+        }
+    }
+
+    private fun messageFor(activity: WorkflowActivity?): String = when {
+        activity == null -> "Document was removed"
+        activity.status == RunStatus.SUCCESS && activity.saveTarget != null ->
+            "Saved to ${activity.saveTarget} and removed locally"
+        activity.status == RunStatus.SUCCESS ->
+            "Document removed by \"${activity.workflowName}\""
+        // A failed or deferred workflow does not delete the document, so a
+        // removal that follows one did not come from that run.
+        else -> "Document was removed"
     }
 
     fun toggleSyncExclude(excluded: Boolean) {
@@ -491,18 +572,24 @@ class DocumentDetailViewModel @Inject constructor(
 
     fun saveToDrive(folderUri: Uri) {
         val doc = _uiState.value.document ?: return
-        val docId = doc.id
+        val name = "${doc.name.replace(" ", "_").replace("/", "_")}.pdf"
+        _uiState.update { it.copy(savingToDrive = true) }
         viewModelScope.launch {
-            val pdfUri = generatePdfToTempFile(docId) ?: return@launch
-            try {
-                val app = getApplication<Application>()
-                val safeName = doc.name.replace(" ", "_").replace("/", "_") + ".pdf"
-                app.contentResolver.openInputStream(pdfUri)?.use { input ->
-                    app.contentResolver.openOutputStream(folderUri)?.use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            } catch (_: Exception) { }
+            val pdfUri = generatePdfToTempFile(doc.id)
+            val result = if (pdfUri == null) {
+                Result.failure(IOException("could not generate the PDF"))
+            } else {
+                folderWriter.write(folderUri, name, "application/pdf", pdfUri)
+            }
+            _uiState.update { it.copy(savingToDrive = false) }
+            result.fold(
+                onSuccess = {
+                    _messages.emit("Saved to ${folderWriter.displayName(folderUri)} as $name")
+                },
+                onFailure = {
+                    _messages.emit("Could not save: ${it.message ?: "unknown error"}")
+                },
+            )
         }
     }
 

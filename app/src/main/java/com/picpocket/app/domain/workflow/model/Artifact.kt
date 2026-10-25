@@ -10,7 +10,7 @@ sealed interface ActionResult {
     data class Failure(val reason: String) : ActionResult
 }
 
-enum class NodeStatus { SUCCESS, SKIPPED, FAILED }
+enum class NodeStatus { SUCCESS, SKIPPED, FAILED, DEFERRED }
 
 /** Outcome of one action within a run. */
 @kotlinx.serialization.Serializable
@@ -22,7 +22,7 @@ data class NodeResult(
     val durationMs: Long = 0,
 )
 
-enum class RunStatus { SUCCESS, PARTIAL_FAILURE, FAILURE }
+enum class RunStatus { SUCCESS, PARTIAL_FAILURE, FAILURE, DEFERRED }
 
 /** Outcome of a whole workflow run. */
 data class RunResult(

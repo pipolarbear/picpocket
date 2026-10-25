@@ -5,6 +5,7 @@ import com.picpocket.app.domain.workflow.action.Execution
 import com.picpocket.app.domain.workflow.action.WorkflowAction
 import com.picpocket.app.domain.workflow.engine.ForegroundExecutor
 import com.picpocket.app.domain.workflow.engine.WorkflowContext
+import com.picpocket.app.domain.network.NetworkMonitor
 import com.picpocket.app.domain.workflow.model.ActionParams
 import com.picpocket.app.domain.workflow.model.ActionResult
 import com.picpocket.app.domain.workflow.model.ActionType
@@ -15,6 +16,7 @@ class RecordingAction(
     override val type: ActionType,
     override val execution: Execution = Execution.HEADLESS,
     private val result: ActionResult = ActionResult.Success(Artifact("file://x", "application/pdf")),
+    private val needsNetwork: Boolean = false,
 ) : WorkflowAction {
     val inputs = mutableListOf<Artifact?>()
     var runs = 0
@@ -23,6 +25,8 @@ class RecordingAction(
         inputs.add(input)
         return result
     }
+
+    override fun requiresNetwork(ctx: WorkflowContext, params: ActionParams): Boolean = needsNetwork
 }
 
 class FakeActionRegistry(private val actions: Map<ActionType, WorkflowAction>) : ActionRegistry {
@@ -30,7 +34,18 @@ class FakeActionRegistry(private val actions: Map<ActionType, WorkflowAction>) :
     override val all: List<WorkflowAction> get() = actions.values.toList()
 }
 
-class FakeForegroundExecutor : ForegroundExecutor {
-    override val isForeground = true
+class FakeForegroundExecutor(var foreground: Boolean = true) : ForegroundExecutor {
+    override val isForeground: Boolean get() = foreground
     override suspend fun run(block: suspend () -> ActionResult): ActionResult = block()
+}
+
+/** Test network state; flip [online] to simulate losing/regaining connectivity. */
+class FakeNetworkMonitor(var online: Boolean = true) : NetworkMonitor {
+    override fun isOnline(): Boolean = online
+}
+
+class FakeWorkflowQueueScheduler : com.picpocket.app.domain.workflow.queue.WorkflowQueueScheduler {
+    var schedules = 0
+    override fun schedule() { schedules++ }
+    override fun requestDrainNow() { schedules++ }
 }

@@ -14,6 +14,7 @@
         android:required="true" />
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" android:maxSdkVersion="32" />
     
     <!-- For Android 13+ (API 33+) media access -->
@@ -31,6 +32,19 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PicPocket"
         tools:targetApi="34">
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <!-- WorkManager must initialize on demand so it uses this app's
+                 HiltWorkerFactory; the default initializer ignores it. -->
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
 
         <activity
             android:name=".MainActivity"

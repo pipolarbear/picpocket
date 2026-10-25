@@ -3,7 +3,11 @@ package com.picpocket.app.ui
 import android.app.Application
 import android.net.Uri
 import com.picpocket.app.data.FakeDocumentRepository
+import com.picpocket.app.data.FakeWorkflowRepository
 import com.picpocket.app.domain.export.FakePdfGenerator
+import com.picpocket.app.domain.storage.FakeFolderWriter
+import com.picpocket.app.domain.workflow.model.TriggerEvent
+import com.picpocket.app.domain.workflow.model.Workflow
 import com.picpocket.app.ui.components.MatchMode
 import com.picpocket.app.ui.screens.home.HomeViewModel
 import com.picpocket.app.util.MainCoroutineRule
@@ -28,13 +32,24 @@ class HomeViewModelTest {
     val coroutineRule = MainCoroutineRule()
 
     private lateinit var repo: FakeDocumentRepository
+    private lateinit var workflowRepo: FakeWorkflowRepository
     private lateinit var viewModel: HomeViewModel
 
     @Before
     fun setUp() {
         repo = FakeDocumentRepository()
+        workflowRepo = FakeWorkflowRepository()
         val app = RuntimeEnvironment.getApplication() as Application
-        viewModel = HomeViewModel(app, repo, FakePdfGenerator())
+        viewModel = HomeViewModel(app, repo, workflowRepo, FakeFolderWriter(), FakePdfGenerator())
+    }
+
+    @Test
+    fun `deferred workflow count is shown in the UI`() = runTest {
+        val id = workflowRepo.save(Workflow(name = "reciepts"))
+        workflowRepo.enqueueDeferred(workflowRepo.get(id)!!, TriggerEvent.DOC_CREATED, "doc-1", "Receipt")
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, viewModel.uiState.value.deferredCount)
     }
 
     @Test

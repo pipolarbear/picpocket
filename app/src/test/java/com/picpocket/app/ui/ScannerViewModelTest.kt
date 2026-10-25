@@ -194,25 +194,31 @@ class ScannerViewModelTest {
         assertTrue("showTagsDialog should be true", viewModel.uiState.value.showTagsDialog)
 
         viewModel.completeSave()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
         assertNotNull("savedDocumentId should be set", viewModel.uiState.value.savedDocumentId)
         assertFalse("showTagsDialog should be false", viewModel.uiState.value.showTagsDialog)
     }
 
     @Test
-    fun `toggleTag applies tag immediately after save`() = runTest {
+    fun `toggleTag does not apply the tag until save is confirmed`() = runTest {
         val tagId = repo.createTag("Work")
         viewModel.updateDocumentName("MyDoc")
         viewModel.onScannerResult(ScannerResult.PageCaptured(createTempImageUri()))
         viewModel.confirmNameAndSave()
         coroutineRule.dispatcher.scheduler.advanceUntilIdle()
         assertTrue("showTagsDialog should be true", viewModel.uiState.value.showTagsDialog)
+        val docId = repo.observeDocuments().first().single().id
 
         viewModel.toggleTag(tagId)
         coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(
+            "tag must not be applied while the sheet is open",
+            repo.observeDocumentTags(docId).first().isEmpty(),
+        )
 
-        val docs = repo.observeDocuments().first()
-        val docTags = repo.observeDocumentTags(docs[0].id).first()
-        assertEquals(1, docTags.size)
+        viewModel.completeSave()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, repo.observeDocumentTags(docId).first().size)
     }
 
     @Test
@@ -291,6 +297,7 @@ class ScannerViewModelTest {
         assertTrue("Tags dialog should show after confirm", viewModel.uiState.value.showTagsDialog)
 
         viewModel.completeSave()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
         assertNotNull("savedDocumentId should be set after completeSave", viewModel.uiState.value.savedDocumentId)
         val docs = repo.observeDocuments().first()
         assertEquals("Only one document should exist (replaced)", 1, docs.size)
@@ -326,6 +333,7 @@ class ScannerViewModelTest {
         assertTrue("Tags dialog should show after save", viewModel.uiState.value.showTagsDialog)
 
         viewModel.completeSave()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
         assertNotNull("Document should be saved normally", viewModel.uiState.value.savedDocumentId)
     }
 
@@ -339,6 +347,7 @@ class ScannerViewModelTest {
         coroutineRule.dispatcher.scheduler.advanceUntilIdle()
 
         viewModel.completeSave()
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
         val savedId = viewModel.uiState.value.savedDocumentId ?: error("No saved document")
         val doc = repo.getDocument(savedId).getOrNull()
         assertNotNull(doc)

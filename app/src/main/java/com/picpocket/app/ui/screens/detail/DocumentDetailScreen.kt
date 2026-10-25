@@ -139,6 +139,19 @@ fun DocumentDetailScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.documentGone.collect { message ->
+            Toast.makeText(contextForExport, message, Toast.LENGTH_LONG).show()
+            onNavigateBack()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.messages.collect { message ->
+            Toast.makeText(contextForExport, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
     LaunchedEffect(documentId) {
         viewModel.loadDocument(documentId)
     }
@@ -519,6 +532,21 @@ fun DocumentDetailScreen(
                 viewModel.hideShareSheet()
                 viewModel.saveToDrive(uri)
             },
+        )
+    }
+
+    if (state.savingToDrive) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Saving to Drive") },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text("Writing the PDF…")
+                }
+            },
+            confirmButton = {},
         )
     }
 
