@@ -1,7 +1,12 @@
 package com.picpocket.app.domain.workflow.model
 
 /** The value flowing down the action tree: a file plus its MIME type. */
-data class Artifact(val uri: String, val mime: String)
+data class Artifact(
+    val uri: String,
+    val mime: String,
+    /** True when the file already has its redacted areas removed. */
+    val redacted: Boolean = false,
+)
 
 /** Outcome of a single action. */
 sealed interface ActionResult {

@@ -4,6 +4,7 @@ import android.net.Uri
 import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
+import com.picpocket.app.data.model.RedactionRect
 import com.picpocket.app.data.model.Tag
 import com.picpocket.app.data.repository.DocumentRepository
 import com.picpocket.app.data.store.TrashedDocument
@@ -137,6 +138,29 @@ class FakeDocumentRepository : DocumentRepository {
         val state = pageLists[documentId] ?: return Result.success(Unit)
         state.value = state.value.map {
             if (it.pageNumber == pageNumber) it.copy(ocrText = ocrText) else it
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun setPageRedactions(
+        documentId: DocumentId,
+        pageNumber: Int,
+        rects: List<RedactionRect>,
+    ): Result<Unit> {
+        val state = pageLists[documentId] ?: return Result.failure(Exception("Document not found"))
+        state.value = state.value.map {
+            if (it.pageNumber == pageNumber) {
+                it.copy(redactions = rects.filter { rect -> rect.isUsable() }.map { rect -> rect.normalized() })
+            } else {
+                it
+            }
+        }
+        documents.value = documents.value.map { doc ->
+            if (doc.id == documentId) {
+                doc.copy(hasRedactions = state.value.any { it.redactions.isNotEmpty() })
+            } else {
+                doc
+            }
         }
         return Result.success(Unit)
     }

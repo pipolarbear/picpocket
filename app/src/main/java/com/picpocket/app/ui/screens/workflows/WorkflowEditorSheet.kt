@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TriStateCheckbox
@@ -590,7 +591,9 @@ private fun NodeParamsEditor(
             var passphraseVisible by remember { mutableStateOf(false) }
             OutlinedTextField(
                 value = params.passphrase,
-                onValueChange = { viewModel.setNodeParams(node.id, ActionParams.Encrypt(it)) },
+                onValueChange = {
+                    viewModel.setNodeParams(node.id, params.copy(passphrase = it))
+                },
                 label = { Text("Passphrase") },
                 singleLine = true,
                 visualTransformation = if (passphraseVisible) {
@@ -629,12 +632,72 @@ private fun NodeParamsEditor(
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 WorkflowApps.all.forEach { app ->
                     DropdownMenuItem(text = { Text(app.displayName) }, onClick = {
-                        viewModel.setNodeParams(node.id, ActionParams.SendToApp(app.packageName, app.displayName))
+                        viewModel.setNodeParams(
+                            node.id,
+                            params.copy(packageName = app.packageName, displayName = app.displayName),
+                        )
                         expanded = false
                     })
                 }
             }
         }
         ActionParams.None -> Unit
+        is ActionParams.Zip -> Unit
     }
+
+    // Every step that hands the file to the outside world can choose between the
+    // original and the version with the marked areas removed.
+    if (node.type.supportsRedaction) {
+        val redact = node.params.requestsRedaction
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Remove redacted areas", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Uses the version with marked areas hidden. Fails when the document has none.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = redact,
+                onCheckedChange = { checked ->
+                    viewModel.setNodeParams(node.id, paramsForRedaction(node, checked))
+                },
+                modifier = Modifier.testTag("redact_toggle"),
+            )
+        }
+    }
+}
+
+private val ActionType.supportsRedaction: Boolean
+    get() = this == ActionType.ENCRYPT ||
+        this == ActionType.ZIP ||
+        this == ActionType.SAVE_TO_FOLDER ||
+        this == ActionType.SEND_TO_APP
+
+private val ActionParams.requestsRedaction: Boolean
+    get() = when (this) {
+        is ActionParams.Encrypt -> redact
+        is ActionParams.Zip -> redact
+        is ActionParams.SaveToFolder -> redact
+        is ActionParams.SendToApp -> redact
+        else -> false
+    }
+
+/** Applies the switch to the node's params, creating the right params type if needed. */
+private fun paramsForRedaction(node: ActionNode, redact: Boolean): ActionParams = when (node.type) {
+    ActionType.ENCRYPT ->
+        (node.params as? ActionParams.Encrypt ?: ActionParams.Encrypt("")).copy(redact = redact)
+    ActionType.ZIP ->
+        (node.params as? ActionParams.Zip ?: ActionParams.Zip()).copy(redact = redact)
+    ActionType.SAVE_TO_FOLDER ->
+        (node.params as? ActionParams.SaveToFolder ?: ActionParams.SaveToFolder("", ""))
+            .copy(redact = redact)
+    ActionType.SEND_TO_APP ->
+        (node.params as? ActionParams.SendToApp
+            ?: ActionParams.SendToApp("com.whatsapp", "WhatsApp")).copy(redact = redact)
+    else -> node.params
 }

@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Merge
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -96,12 +97,14 @@ fun DocumentDetailScreen(
     documentId: DocumentId,
     onNavigateBack: () -> Unit,
     onPageView: (DocumentId, Int) -> Unit = { _, _ -> },
+    onOpenRedact: (DocumentId, Int) -> Unit = { _, _ -> },
     onAddPage: (DocumentId) -> Unit,
     viewModel: DocumentDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val allTags by viewModel.allTags.collectAsState()
     val contextForExport = LocalContext.current
+    val hasRedactions = state.pages.any { it.redactions.isNotEmpty() }
 
     val exportPdfLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/pdf"),
@@ -200,6 +203,17 @@ fun DocumentDetailScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("Export redacted PDF") },
+                                enabled = hasRedactions,
+                                onClick = {
+                                    viewModel.hideOverflowMenu()
+                                    viewModel.showExportDialog(redact = true)
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.VisibilityOff, contentDescription = null)
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Rename") },
                                 onClick = {
                                     viewModel.hideOverflowMenu()
@@ -217,6 +231,16 @@ fun DocumentDetailScreen(
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.Share, contentDescription = null)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Mark areas to hide") },
+                                onClick = {
+                                    viewModel.hideOverflowMenu()
+                                    onOpenRedact(documentId, 0)
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.VisibilityOff, contentDescription = null)
                                 },
                             )
                             DropdownMenuItem(
@@ -532,6 +556,22 @@ fun DocumentDetailScreen(
                 viewModel.hideShareSheet()
                 viewModel.saveToDrive(uri)
             },
+            onShareViaRedacted = if (hasRedactions) {
+                {
+                    viewModel.hideShareSheet()
+                    viewModel.shareViaSystem(ctx, redact = true)
+                }
+            } else {
+                null
+            },
+            onSaveToDriveRedacted = if (hasRedactions) {
+                { uri ->
+                    viewModel.hideShareSheet()
+                    viewModel.saveToDrive(uri, redact = true)
+                }
+            } else {
+                null
+            },
         )
     }
 
@@ -569,29 +609,39 @@ fun DocumentDetailScreen(
         var showPageSizeMenu by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { viewModel.hideExportDialog() },
-            title = { Text("Export as PDF") },
+            title = { Text(if (state.exportRedacted) "Export redacted PDF" else "Export as PDF") },
             text = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Page Size", modifier = Modifier.weight(1f))
-                    Box {
-                        OutlinedButton(onClick = { showPageSizeMenu = true }) {
-                            Text(state.exportPageSize.label)
-                        }
-                        DropdownMenu(
-                            expanded = showPageSizeMenu,
-                            onDismissRequest = { showPageSizeMenu = false },
-                        ) {
-                            PageSize.entries.forEach { size ->
-                                DropdownMenuItem(
-                                    text = { Text(size.label) },
-                                    onClick = {
-                                        viewModel.setExportPageSize(size)
-                                        showPageSizeMenu = false
-                                    },
-                                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (state.exportRedacted) {
+                        Text(
+                            "Marked areas will be hidden in the exported file.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Page Size", modifier = Modifier.weight(1f))
+                        Box {
+                            OutlinedButton(onClick = { showPageSizeMenu = true }) {
+                                Text(state.exportPageSize.label)
+                            }
+                            DropdownMenu(
+                                expanded = showPageSizeMenu,
+                                onDismissRequest = { showPageSizeMenu = false },
+                            ) {
+                                PageSize.entries.forEach { size ->
+                                    DropdownMenuItem(
+                                        text = { Text(size.label) },
+                                        onClick = {
+                                            viewModel.setExportPageSize(size)
+                                            showPageSizeMenu = false
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -599,10 +649,14 @@ fun DocumentDetailScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
+                    val redacted = state.exportRedacted
                     viewModel.hideExportDialog()
-                    exportPdfLauncher.launch("${state.document?.name?.replace(" ", "_") ?: "document"}.pdf")
+                    val suffix = if (redacted) "_redacted" else ""
+                    exportPdfLauncher.launch(
+                        "${state.document?.name?.replace(" ", "_") ?: "document"}$suffix.pdf",
+                    )
                 }) {
-                    Text("Export")
+                    Text(if (state.exportRedacted) "Export redacted" else "Export")
                 }
             },
             dismissButton = {

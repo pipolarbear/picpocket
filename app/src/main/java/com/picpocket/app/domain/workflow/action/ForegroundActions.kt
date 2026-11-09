@@ -27,7 +27,7 @@ class SendToAppAction @Inject constructor() : WorkflowAction {
     override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult {
         val app = params as? ActionParams.SendToApp
             ?: return ActionResult.Failure("send-to-app: app not configured")
-        val source = ctx.ensurePdf(input)
+        val source = ctx.ensurePdf(input, redact = app.redact)
         return ctx.foreground.run {
             val path = Uri.parse(source.uri).path
                 ?: return@run ActionResult.Failure("send-to-app: unsupported artifact uri")

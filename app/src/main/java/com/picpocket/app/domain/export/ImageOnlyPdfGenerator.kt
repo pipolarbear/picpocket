@@ -12,22 +12,26 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class ImageOnlyPdfGenerator @Inject constructor() : PdfGenerator {
+class ImageOnlyPdfGenerator @Inject constructor(
+    private val redactionBurner: com.picpocket.app.domain.render.RedactionBurner,
+) : PdfGenerator {
 
     override suspend fun generate(
         context: Context,
         pages: List<Page>,
         outputUri: Uri,
         pageSize: PageSize,
+        redact: Boolean,
     ): PdfResult = withContext(Dispatchers.IO) {
         try {
             val document = PdfDocument()
             for (page in pages) {
-                val bitmap = context.contentResolver.openInputStream(
+                val decoded = context.contentResolver.openInputStream(
                     Uri.parse(page.imageUri)
                 )?.use { stream ->
                     BitmapFactory.decodeStream(stream)
                 } ?: continue
+                val bitmap = if (redact) redactionBurner.burn(decoded, page.redactions) else decoded
 
                 val bitmapW = bitmap.width
                 val bitmapH = bitmap.height
@@ -48,6 +52,7 @@ class ImageOnlyPdfGenerator @Inject constructor() : PdfGenerator {
                 ), null)
                 document.finishPage(pdfPage)
                 bitmap.recycle()
+                if (bitmap !== decoded) decoded.recycle()
             }
 
             context.contentResolver.openOutputStream(outputUri)?.use { out: OutputStream ->

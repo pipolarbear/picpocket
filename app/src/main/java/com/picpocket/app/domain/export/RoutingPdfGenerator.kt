@@ -29,8 +29,11 @@ class RoutingPdfGenerator @Inject constructor(
         pages: List<Page>,
         outputUri: Uri,
         pageSize: PageSize,
+        redact: Boolean,
     ): PdfResult {
-        if (native.hasNativePages(pages)) {
+        // A redacted export must not copy native bytes: those pages have to be
+        // rasterized so the hidden areas can be burnt into the pixels.
+        if (!redact && native.hasNativePages(pages)) {
             if (native.export(context, pages, outputUri, copyWhenUnchanged = true)) {
                 return PdfResult.Success(outputUri.toString())
             }
@@ -40,7 +43,12 @@ class RoutingPdfGenerator @Inject constructor(
             }
             return PdfResult.Error(Exception("Could not export the document"))
         }
-        return searchable.generate(context, pages, outputUri, pageSize)
+        if (redact && native.hasNativePages(pages)) {
+            val rasterized = rasterize(context, pages)
+                ?: return PdfResult.Error(Exception("Could not export the document"))
+            return searchable.generate(context, rasterized, outputUri, pageSize, redact = true)
+        }
+        return searchable.generate(context, pages, outputUri, pageSize, redact = redact)
     }
 
     /** Renders native pages to high-DPI images so the image generator can export them. */

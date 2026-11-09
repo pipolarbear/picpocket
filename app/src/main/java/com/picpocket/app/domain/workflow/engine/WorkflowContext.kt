@@ -30,7 +30,8 @@ class WorkflowContext(
     val pageSize: PageSize,
 ) {
     private val pdfMutex = Mutex()
-    private var pdfCache: Artifact? = null
+    private var plainPdfCache: Artifact? = null
+    private var redactedPdfCache: Artifact? = null
 
     val workDir: File
         get() = File(app.cacheDir, "workflow").apply { mkdirs() }
@@ -39,20 +40,39 @@ class WorkflowContext(
      * The artifact an action operates on: its input when it has one, otherwise
      * the triggering document rendered to a PDF. The engine renders the root
      * PDF eagerly, so this only falls back for a defensive null input.
+     *
+     * With [redact] the result is the redacted PDF: an already-redacted input is
+     * passed through, a non-PDF input (zip/encrypted) is refused because the
+     * document's areas are no longer reachable, and the document is rendered
+     * with its areas removed otherwise.
      */
-    suspend fun ensurePdf(input: Artifact?): Artifact = input ?: renderPdf()
+    suspend fun ensurePdf(input: Artifact?, redact: Boolean = false): Artifact {
+        if (!redact) return input ?: renderPdf()
+        if (input?.redacted == true) return input
+        if (input != null && input.mime != PDF_MIME) {
+            error("Remove redacted areas must run before zip or encrypt")
+        }
+        return renderPdf(redact = true)
+    }
 
-    /** Renders the document to a PDF once per run and caches it. */
-    suspend fun renderPdf(): Artifact {
+    /** Renders the document to a PDF once per run (plain and redacted) and caches it. */
+    suspend fun renderPdf(redact: Boolean = false): Artifact {
         pdfMutex.withLock {
-            pdfCache?.let { return it }
+            val cached = if (redact) redactedPdfCache else plainPdfCache
+            if (cached != null) return cached
+            if (redact && !document.hasRedactions) {
+                error("This document has no redacted areas")
+            }
             val pages = repository.getPages(document.id).getOrNull().orEmpty()
-            val out = File(workDir, "${document.id}.pdf")
-            when (pdfGenerator.generate(app, pages, Uri.fromFile(out), pageSize)) {
+            val name = if (redact) "${document.id}.redacted.pdf" else "${document.id}.pdf"
+            val out = File(workDir, name)
+            when (pdfGenerator.generate(app, pages, Uri.fromFile(out), pageSize, redact = redact)) {
                 is PdfResult.Success -> Unit
                 is PdfResult.Error -> throw IllegalStateException("PDF generation failed")
             }
-            return Artifact(Uri.fromFile(out).toString(), PDF_MIME).also { pdfCache = it }
+            val artifact = Artifact(Uri.fromFile(out).toString(), PDF_MIME, redacted = redact)
+            if (redact) redactedPdfCache = artifact else plainPdfCache = artifact
+            return artifact
         }
     }
 

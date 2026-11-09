@@ -4,6 +4,7 @@ import android.net.Uri
 import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
+import com.picpocket.app.data.model.RedactionRect
 import com.picpocket.app.data.model.Tag
 import com.picpocket.app.data.store.TrashedDocument
 import kotlinx.coroutines.flow.Flow
@@ -32,6 +33,12 @@ interface DocumentRepository {
     suspend fun deleteTrashedDocument(documentId: DocumentId): Result<Unit>
     suspend fun purgeTrash(retentionDays: Int): Int
     suspend fun deletePage(documentId: DocumentId, pageNumber: Int): Result<Unit>
+    /** Replaces the areas hidden when this page is exported redacted. */
+    suspend fun setPageRedactions(
+        documentId: DocumentId,
+        pageNumber: Int,
+        rects: List<RedactionRect>,
+    ): Result<Unit>
     suspend fun replacePages(documentId: DocumentId, keptFilenames: List<String>): Result<Unit>
     suspend fun reorderPages(documentId: DocumentId, pageNumbers: List<Int>): Result<Unit>
     suspend fun searchDocumentsByOcrText(query: String): Result<Set<DocumentId>>

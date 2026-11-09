@@ -17,11 +17,12 @@ class DefaultActionRegistry @Inject constructor(
     saveToFolder: SaveToFolderAction,
     sendToApp: SendToAppAction,
     notify: NotifyAction,
+    redact: RedactAction,
     delete: DeleteAction,
 ) : ActionRegistry {
 
     private val actions: Map<ActionType, WorkflowAction> =
-        listOf(encrypt, zip, saveToFolder, sendToApp, notify, delete).associateBy { it.type }
+        listOf(encrypt, zip, saveToFolder, sendToApp, notify, redact, delete).associateBy { it.type }
 
     override fun action(type: ActionType): WorkflowAction =
         actions[type] ?: error("no action registered for $type")

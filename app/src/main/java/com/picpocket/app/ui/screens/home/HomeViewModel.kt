@@ -78,6 +78,8 @@ data class HomeUiState(
     val shareFilteredDocs: Boolean = false,
     val showExportDialog: Boolean = false,
     val exportPageSize: PageSize = PageSize.A4,
+    /** True when the export is preparing the version with marked areas hidden. */
+    val exportRedacted: Boolean = false,
     val pendingExportDocIds: List<DocumentId> = emptyList(),
     val showRenameOverwriteDialog: Boolean = false,
     val renameOverwriteTargetName: String = "",
@@ -501,7 +503,7 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(showShareSheet = false, shareFilteredDocs = false) }
     }
 
-    fun showExportDialog() {
+    fun showExportDialog(redact: Boolean = false) {
         val ids = _uiState.value.selectedDocumentIds.toList()
         if (ids.isEmpty()) return
         _uiState.update {
@@ -509,6 +511,7 @@ class HomeViewModel @Inject constructor(
                 showExportDialog = true,
                 exportPageSize = readDefaultPageSize(),
                 pendingExportDocIds = ids,
+                exportRedacted = redact,
             )
         }
     }
@@ -535,7 +538,13 @@ class HomeViewModel @Inject constructor(
             if (doc != null) {
                 val pages = repository.getPages(docId).getOrNull() ?: emptyList()
                 if (pages.isNotEmpty()) {
-                    val result = pdfGenerator.generate(context, pages, outputUri, state.exportPageSize)
+                    pdfGenerator.generate(
+                        context,
+                        pages,
+                        outputUri,
+                        state.exportPageSize,
+                        redact = state.exportRedacted,
+                    )
                 }
             }
             val remaining = state.pendingExportDocIds.drop(1)
@@ -548,21 +557,21 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun shareViaSystem(context: Context) {
+    fun shareViaSystem(context: Context, redact: Boolean = false) {
         val docs = getDocsToShare()
         if (docs.isEmpty()) return
         viewModelScope.launch {
             if (docs.size == 1) {
-                val pdfUri = generateTempPdf(context, docs.first()) ?: return@launch
-                sharePdf(context, pdfUri)
+                val pdfUri = generateTempPdf(context, docs.first(), redact) ?: return@launch
+                sharePdf(context, pdfUri, redact)
             } else {
-                shareMultiplePdfs(context, docs)
+                shareMultiplePdfs(context, docs, redact)
             }
         }
         if (!_uiState.value.shareFilteredDocs) exitSelectionMode()
     }
 
-    fun saveToDrive(context: Context, folderUri: Uri) {
+    fun saveToDrive(context: Context, folderUri: Uri, redact: Boolean = false) {
         val docs = getDocsToShare()
         if (docs.isEmpty()) return
         _uiState.update { it.copy(savingToShareTarget = true) }
@@ -570,10 +579,11 @@ class HomeViewModel @Inject constructor(
             val written = mutableListOf<String>()
             val failed = mutableListOf<String>()
             if (docs.size == 1) {
-                writeOne(context, folderUri, docs.first(), written, failed)
+                writeOne(context, folderUri, docs.first(), redact, written, failed)
             } else {
-                folderWriter.createDirectory(folderUri, zipBaseName()).fold(
-                    onSuccess = { dir -> docs.forEach { writeOne(context, dir, it, written, failed) } },
+                val base = zipBaseName() + if (redact) "_redacted" else ""
+                folderWriter.createDirectory(folderUri, base).fold(
+                    onSuccess = { dir -> docs.forEach { writeOne(context, dir, it, redact, written, failed) } },
                     onFailure = { failed += (it.message ?: "could not create the folder") },
                 )
             }
@@ -593,11 +603,13 @@ class HomeViewModel @Inject constructor(
         context: Context,
         folderUri: Uri,
         doc: Document,
+        redact: Boolean,
         written: MutableList<String>,
         failed: MutableList<String>,
     ) {
-        val pdfUri = generateTempPdf(context, doc)
-        val name = "${doc.name.replace(" ", "_").replace("/", "_")}.pdf"
+        val pdfUri = generateTempPdf(context, doc, redact)
+        val suffix = if (redact) "_redacted" else ""
+        val name = "${doc.name.replace(" ", "_").replace("/", "_")}$suffix.pdf"
         val result = if (pdfUri == null) {
             Result.failure(IOException("could not generate the PDF"))
         } else {
@@ -621,37 +633,37 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private suspend fun generateTempPdf(context: Context, doc: Document): Uri? {
+    private suspend fun generateTempPdf(context: Context, doc: Document, redact: Boolean = false): Uri? {
         val pages = repository.getPages(doc.id).getOrNull() ?: return null
         val tempDir = File(context.cacheDir, "exports")
         tempDir.mkdirs()
-        val tempFile = File(tempDir, "${doc.id}.pdf")
+        val tempFile = File(tempDir, "${doc.id}${if (redact) "_redacted" else ""}.pdf")
         val prefs = context.getSharedPreferences("settings", 0)
         val docPageSize = doc.pageSize?.let { try { PageSize.valueOf(it) } catch (_: Exception) { null } }
         val pageSize = docPageSize ?: prefs.getString("page_size", PageSize.A4.name)?.let { try { PageSize.valueOf(it) } catch (_: Exception) { null } } ?: PageSize.A4
-        val result = pdfGenerator.generate(context, pages, Uri.fromFile(tempFile), pageSize)
+        val result = pdfGenerator.generate(context, pages, Uri.fromFile(tempFile), pageSize, redact = redact)
         return when (result) {
             is com.picpocket.app.domain.export.PdfResult.Success -> Uri.fromFile(tempFile)
             is com.picpocket.app.domain.export.PdfResult.Error -> null
         }
     }
 
-    private fun sharePdf(context: Context, pdfUri: Uri) {
+    private fun sharePdf(context: Context, pdfUri: Uri, redact: Boolean = false) {
         val shareUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(pdfUri.path!!))
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "application/pdf"
             putExtra(Intent.EXTRA_STREAM, shareUri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "Share PDF"))
+        context.startActivity(Intent.createChooser(intent, if (redact) "Share redacted PDF" else "Share PDF"))
     }
 
-    private suspend fun shareMultiplePdfs(context: Context, docs: List<Document>) {
-        val baseName = zipBaseName()
+    private suspend fun shareMultiplePdfs(context: Context, docs: List<Document>, redact: Boolean = false) {
+        val baseName = zipBaseName() + if (redact) "_redacted" else ""
         val uris = docs.mapNotNull { doc ->
-            val pdfUri = generateTempPdf(context, doc) ?: return@mapNotNull null
-            val name = doc.name.replace(" ", "_") + ".pdf"
-            name to pdfUri
+            val pdfUri = generateTempPdf(context, doc, redact) ?: return@mapNotNull null
+            val suffix = if (redact) "_redacted" else ""
+            "${doc.name.replace(" ", "_")}$suffix.pdf" to pdfUri
         }
         if (uris.isEmpty()) return
         val contentResolver = context.contentResolver

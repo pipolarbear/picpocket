@@ -18,6 +18,7 @@ import javax.inject.Singleton
 @Singleton
 class SearchablePdfGenerator @Inject constructor(
     private val ocrEngine: OcrEngine,
+    private val redactionBurner: com.picpocket.app.domain.render.RedactionBurner,
 ) : PdfGenerator {
 
     override suspend fun generate(
@@ -25,17 +26,19 @@ class SearchablePdfGenerator @Inject constructor(
         pages: List<Page>,
         outputUri: Uri,
         pageSize: PageSize,
+        redact: Boolean,
     ): PdfResult = withContext(Dispatchers.IO) {
         try {
             val searchable = isSearchable(context)
             val document = PdfDocument()
 
             for (page in pages) {
-                val bitmap = context.contentResolver.openInputStream(
+                val decoded = context.contentResolver.openInputStream(
                     Uri.parse(page.imageUri)
                 )?.use { stream ->
                     BitmapFactory.decodeStream(stream)
                 } ?: continue
+                val bitmap = if (redact) redactionBurner.burn(decoded, page.redactions) else decoded
 
                 val bitmapW = bitmap.width
                 val bitmapH = bitmap.height
@@ -56,11 +59,24 @@ class SearchablePdfGenerator @Inject constructor(
                 ), null)
 
                 if (searchable) {
-                    drawTextLayer(pdfPage.canvas, bitmap, scale, offsetX, offsetY)
+                    val hidden = if (redact) {
+                        page.redactions.map { rect ->
+                            android.graphics.RectF(
+                                offsetX + rect.x * scaledW,
+                                offsetY + rect.y * scaledH,
+                                offsetX + rect.right * scaledW,
+                                offsetY + rect.bottom * scaledH,
+                            )
+                        }
+                    } else {
+                        emptyList()
+                    }
+                    drawTextLayer(pdfPage.canvas, bitmap, scale, offsetX, offsetY, hidden)
                 }
 
                 document.finishPage(pdfPage)
                 bitmap.recycle()
+                if (bitmap !== decoded) decoded.recycle()
             }
 
             context.contentResolver.openOutputStream(outputUri)?.use { out: OutputStream ->
@@ -85,9 +101,24 @@ class SearchablePdfGenerator @Inject constructor(
         scale: Float,
         offsetX: Float,
         offsetY: Float,
+        hidden: List<android.graphics.RectF> = emptyList(),
     ) {
         val layout = runCatching { ocrEngine.recognizeLayout(bitmap) }.getOrNull() ?: return
         val placements = SearchableTextLayer.placements(layout.elements, scale, offsetX, offsetY)
+            .filter { placement ->
+                // Never write back words that sit under a hidden area.
+                hidden.none { rect ->
+                    android.graphics.RectF.intersects(
+                        rect,
+                        android.graphics.RectF(
+                            placement.left,
+                            placement.top,
+                            placement.left + placement.boxWidth,
+                            placement.top + placement.textSize,
+                        ),
+                    )
+                }
+            }
         if (placements.isEmpty()) return
 
         val paint = Paint().apply {

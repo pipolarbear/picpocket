@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TabUnselected
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -161,9 +162,16 @@ fun HomeScreen(
         if (state.pendingExportDocIds.isNotEmpty() && !state.showExportDialog) {
             val doc = state.documents.find { it.id == state.pendingExportDocIds.first() }
             val name = doc?.name?.replace(" ", "_") ?: "document"
-            exportPdfLauncher.launch("${name}.pdf")
+            val suffix = if (state.exportRedacted) "_redacted" else ""
+            exportPdfLauncher.launch("$name$suffix.pdf")
         }
     }
+
+    // A redacted export is only offered when every document in the share has
+    // marked areas; otherwise the file would claim to be redacted but leak the rest.
+    val selectedDocs = state.documents.filter { it.id in state.selectedDocumentIds }
+    val shareCandidates = if (state.shareFilteredDocs) state.documents else selectedDocs
+    val canShareRedacted = shareCandidates.isNotEmpty() && shareCandidates.all { it.hasRedactions }
 
     Scaffold(
         topBar = {
@@ -215,6 +223,15 @@ fun HomeScreen(
                         }
                         IconButton(onClick = { viewModel.showExportDialog() }) {
                             Icon(Icons.Default.Description, contentDescription = "Export as PDF")
+                        }
+                        IconButton(
+                            onClick = { viewModel.showExportDialog(redact = true) },
+                            enabled = canShareRedacted,
+                        ) {
+                            Icon(
+                                Icons.Default.VisibilityOff,
+                                contentDescription = "Export redacted PDF",
+                            )
                         }
                         IconButton(onClick = { viewModel.showDeleteConfirmation() }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete selected")
@@ -607,6 +624,22 @@ fun HomeScreen(
                 viewModel.saveToDrive(context, uri)
                 viewModel.hideShareSheet()
             },
+            onShareViaRedacted = if (canShareRedacted) {
+                {
+                    viewModel.shareViaSystem(context, redact = true)
+                    viewModel.hideShareSheet()
+                }
+            } else {
+                null
+            },
+            onSaveToDriveRedacted = if (canShareRedacted) {
+                { uri ->
+                    viewModel.saveToDrive(context, uri, redact = true)
+                    viewModel.hideShareSheet()
+                }
+            } else {
+                null
+            },
         )
     }
 
@@ -657,29 +690,39 @@ fun HomeScreen(
         var showPageSizeMenu by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { viewModel.hideExportDialog() },
-            title = { Text("Export as PDF") },
+            title = { Text(if (state.exportRedacted) "Export redacted PDF" else "Export as PDF") },
             text = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Page Size", modifier = Modifier.weight(1f))
-                    Box {
-                        OutlinedButton(onClick = { showPageSizeMenu = true }) {
-                            Text(state.exportPageSize.label)
-                        }
-                        DropdownMenu(
-                            expanded = showPageSizeMenu,
-                            onDismissRequest = { showPageSizeMenu = false },
-                        ) {
-                            PageSize.entries.forEach { size ->
-                                DropdownMenuItem(
-                                    text = { Text(size.label) },
-                                    onClick = {
-                                        viewModel.setExportPageSize(size)
-                                        showPageSizeMenu = false
-                                    },
-                                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (state.exportRedacted) {
+                        Text(
+                            "Marked areas will be hidden in the exported file.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Page Size", modifier = Modifier.weight(1f))
+                        Box {
+                            OutlinedButton(onClick = { showPageSizeMenu = true }) {
+                                Text(state.exportPageSize.label)
+                            }
+                            DropdownMenu(
+                                expanded = showPageSizeMenu,
+                                onDismissRequest = { showPageSizeMenu = false },
+                            ) {
+                                PageSize.entries.forEach { size ->
+                                    DropdownMenuItem(
+                                        text = { Text(size.label) },
+                                        onClick = {
+                                            viewModel.setExportPageSize(size)
+                                            showPageSizeMenu = false
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -689,7 +732,7 @@ fun HomeScreen(
                 TextButton(onClick = {
                     viewModel.hideExportDialog()
                 }) {
-                    Text("Export")
+                    Text(if (state.exportRedacted) "Export redacted" else "Export")
                 }
             },
             dismissButton = {

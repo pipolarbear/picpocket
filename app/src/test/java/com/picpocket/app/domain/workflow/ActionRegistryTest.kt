@@ -6,6 +6,7 @@ import com.picpocket.app.domain.workflow.action.DefaultActionRegistry
 import com.picpocket.app.domain.workflow.action.DeleteAction
 import com.picpocket.app.domain.workflow.action.EncryptAction
 import com.picpocket.app.domain.workflow.action.NotifyAction
+import com.picpocket.app.domain.workflow.action.RedactAction
 import com.picpocket.app.domain.workflow.action.SaveToFolderAction
 import com.picpocket.app.domain.workflow.action.SendToAppAction
 import com.picpocket.app.domain.workflow.action.ZipAction
@@ -21,6 +22,7 @@ class ActionRegistryTest {
         saveToFolder = SaveToFolderAction(FakeFolderAccess(), FakeFolderWriter()),
         sendToApp = SendToAppAction(),
         notify = NotifyAction(),
+        redact = RedactAction(),
         delete = DeleteAction(),
     )
 

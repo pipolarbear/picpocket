@@ -81,7 +81,9 @@ object AppModule {
     @Provides
     @Singleton
     @ImageOnlyPdf
-    fun provideImageOnlyPdfGenerator(): PdfGenerator = ImageOnlyPdfGenerator()
+    fun provideImageOnlyPdfGenerator(
+        redactionBurner: com.picpocket.app.domain.render.RedactionBurner,
+    ): PdfGenerator = ImageOnlyPdfGenerator(redactionBurner)
 
     @Provides
     @Singleton

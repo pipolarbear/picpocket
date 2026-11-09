@@ -34,6 +34,7 @@ enum class ActionType(val value: String, val label: String) {
     SAVE_TO_FOLDER("save-to-folder", "Save to folder"),
     SEND_TO_APP("send-to-app", "Send to app"),
     NOTIFY("notify", "Notify"),
+    REDACT("redact", "Remove redacted areas"),
     DELETE("delete", "Delete document"),
     ;
 
