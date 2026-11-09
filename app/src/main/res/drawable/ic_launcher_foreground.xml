@@ -1,46 +1,75 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
     <group
         android:pivotX="54"
         android:pivotY="54"
-        android:scaleX="0.86"
-        android:scaleY="0.86">
+        android:scaleX="0.95"
+        android:scaleY="0.95">
+
+        <!-- The page, tilted slightly as if tucked into the pocket. -->
         <group
             android:pivotX="54"
-            android:pivotY="48"
-            android:rotation="-3">
+            android:pivotY="46"
+            android:rotation="-4">
+            <!-- drop shadow -->
+            <path
+                android:fillColor="#382B3A38"
+                android:pathData="M41,21.5 L64,21.5 L73,30.5 L73,67 Q73,72.5 67.5,72.5 L41,72.5 Q35.5,72.5 35.5,67 L35.5,27 Q35.5,21.5 41,21.5 Z" />
             <!-- page -->
             <path
                 android:fillColor="#FFFFFF"
-                android:pathData="M45,24 L63,24 L69,30 L69,64 Q69,69 64,69 L45,69 Q40,69 40,64 L40,29 Q40,24 45,24 Z" />
+                android:strokeColor="#B9CBC6"
+                android:strokeWidth="1"
+                android:strokeLineJoin="round"
+                android:pathData="M41,20 L64,20 L73,29 L73,66 Q73,72 67,72 L41,72 Q35,72 35,66 L35,26 Q35,20 41,20 Z" />
             <!-- folded corner -->
             <path
-                android:fillColor="#AFC3EE"
-                android:pathData="M63,24 L69,30 L63,30 Z" />
+                android:fillColor="#D8E6E2"
+                android:pathData="M64,20 L73,29 L64,29 Z" />
             <!-- scan beam -->
             <path
-                android:fillColor="#2F5BFF"
-                android:pathData="M43,45 L66,45 Q68,45 68,47.5 Q68,50 66,50 L43,50 Q41,50 41,47.5 Q41,45 43,45 Z" />
+                android:fillColor="#FFB020"
+                android:pathData="M42,38 L67,38 Q70.5,38 70.5,41.5 Q70.5,45 67,45 L42,45 Q38.5,45 38.5,41.5 Q38.5,38 42,38 Z" />
             <!-- text line -->
             <path
-                android:fillColor="#DCE4FF"
-                android:pathData="M46,56 L62,56 L62,58.5 L46,58.5 Z" />
+                android:fillColor="#D8E6E2"
+                android:pathData="M39,49 L61,49 L61,52 L39,52 Z" />
         </group>
-        <!-- pocket -->
+
+        <!-- Pocket: deep teal against the cream background. -->
+        <path android:pathData="M24,52 L84,52 L84,75 Q84,88 71,88 L37,88 Q24,88 24,75 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="54"
+                    android:startY="52"
+                    android:endX="54"
+                    android:endY="88">
+                    <item android:offset="0" android:color="#FF0F766E" />
+                    <item android:offset="1" android:color="#FF0B4F4A" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <!-- Lit top edge of the fabric -->
         <path
-            android:fillColor="#1E2C4E"
-            android:pathData="M29,56 L79,56 L79,77 Q79,85 71,85 L37,85 Q29,85 29,77 Z" />
-        <!-- pocket rim -->
+            android:fillColor="#2FA79B"
+            android:pathData="M24,52 L84,52 L84,58 Q84,60.5 81.5,60.5 L26.5,60.5 Q24,60.5 24,58 Z" />
+        <!-- Stitched seam -->
         <path
-            android:fillColor="#344C7A"
-            android:pathData="M29,56 L79,56 L79,60 Q79,63 76,63 L32,63 Q29,63 29,60 Z" />
-        <!-- amber stud -->
+            android:fillColor="#00000000"
+            android:strokeColor="#5FBEB2"
+            android:strokeWidth="1"
+            android:strokeLineCap="round"
+            android:pathData="M28,62 L28,75 Q28,84 37,84 L71,84 Q80,84 80,75 L80,62" />
+        <!-- Rivet -->
         <path
-            android:fillColor="#FFB020"
-            android:pathData="M71,70 a2.4,2.4 0 1,0 0,4.8 a2.4,2.4 0 1,0 0,-4.8 Z" />
+            android:fillColor="#C2703A"
+            android:pathData="M75,70.4 a2.6,2.6 0 1,0 0,5.2 a2.6,2.6 0 1,0 0,-5.2 Z" />
     </group>
 </vector>

@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0B1020</color>
+    <!-- No background plate: the launcher shows the pocket and page floating, and
+         the page's own shadow/outline keeps it readable on light wallpapers. -->
+    <color name="ic_launcher_background">#00000000</color>
+    <!-- The splash stays dark so the launch does not flash a bright frame. -->
+    <color name="splash_background">#10151C</color>
 </resources>
