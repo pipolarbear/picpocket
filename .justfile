@@ -25,6 +25,17 @@ compose_file := "./sync-tests/docker-compose.test.yml"
 avd_name := "testPixel7"
 sdk_root := env_var_or_default("ANDROID_HOME", env_var_or_default("ANDROID_SDK_ROOT", "/home/zun/.local/android-sdk"))
 
+# ---------------------------------------------------------------------------
+# Build environment
+# ---------------------------------------------------------------------------
+# PicPocket must build with JDK 21. The system default here is JDK 25, which
+# fails inside the bundled Kotlin compiler with "IllegalArgumentException:
+# 25.0.4.1". Every recipe - including the Python test runner and the e2e shell
+# scripts, which shell out to Gradle - inherits this JAVA_HOME.
+# Point PICPOCKET_JAVA_HOME at your JDK 21 if it lives elsewhere.
+java_home := env_var_or_default("PICPOCKET_JAVA_HOME", "/usr/lib/jvm/java-21-openjdk-amd64")
+export JAVA_HOME := java_home
+
 APP_NAME := "com.picpocket.app"
 APK_PATH := "app/build/outputs/apk/debug/app-debug.apk"
 
@@ -33,6 +44,11 @@ _default: help
 # List all available tasks (descriptions from the comment above each task)
 help:
     @just --list
+
+# Show the JDK the build will use (and prove it runs)
+java-version:
+    @echo "JAVA_HOME={{java_home}}"
+    @{{java_home}}/bin/java -version
 
 # Build the debug APK
 build:

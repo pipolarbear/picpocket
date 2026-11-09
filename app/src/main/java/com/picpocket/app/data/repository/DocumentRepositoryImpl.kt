@@ -9,6 +9,7 @@ import com.picpocket.app.data.model.Document
 import com.picpocket.app.data.model.DocumentId
 import com.picpocket.app.data.model.Page
 import com.picpocket.app.data.model.PageKind
+import com.picpocket.app.data.model.RedactionRect
 import com.picpocket.app.data.model.Tag
 import com.picpocket.app.data.store.DocumentAccessStore
 import com.picpocket.app.data.store.DocumentStore
@@ -107,6 +108,7 @@ class DocumentRepositoryImpl @Inject constructor(
                     createdAt = sp.createdAt,
                     kind = sp.kind,
                     pdfPageIndex = sp.pdfPageIndex,
+                    redactions = sp.redactions,
                 )
             }
         }
@@ -130,6 +132,7 @@ class DocumentRepositoryImpl @Inject constructor(
                     createdAt = sp.createdAt,
                     kind = sp.kind,
                     pdfPageIndex = sp.pdfPageIndex,
+                    redactions = sp.redactions,
                 )
             }
         }
@@ -302,6 +305,17 @@ class DocumentRepositoryImpl @Inject constructor(
         return store.removePage(documentId, pageNumber).onSuccess {
             scope.launch { refreshDocuments() }
             emit(TriggerEvent.PAGE_REMOVED, documentId)
+        }
+    }
+
+    override suspend fun setPageRedactions(
+        documentId: DocumentId,
+        pageNumber: Int,
+        rects: List<RedactionRect>,
+    ): Result<Unit> {
+        return store.updatePageRedactions(documentId, pageNumber, rects).onSuccess {
+            scope.launch { refreshDocuments() }
+            notifyDocumentsChanged()
         }
     }
 
@@ -571,6 +585,7 @@ class DocumentRepositoryImpl @Inject constructor(
             qualityTier = qualityTier,
             ocrComplete = ocrComplete,
             pageSize = pageSize,
+            hasRedactions = pages.any { page -> page.redactions.isNotEmpty() },
         )
     }
 

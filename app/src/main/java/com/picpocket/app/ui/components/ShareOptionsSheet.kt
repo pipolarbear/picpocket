@@ -34,6 +34,8 @@ fun ShareOptionsSheet(
     onDismiss: () -> Unit,
     onShareVia: () -> Unit,
     onSaveToDrive: (Uri) -> Unit,
+    onShareViaRedacted: (() -> Unit)? = null,
+    onSaveToDriveRedacted: ((Uri) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -42,6 +44,14 @@ fun ShareOptionsSheet(
     ) { uri ->
         if (uri != null) {
             onSaveToDrive(uri)
+        }
+    }
+
+    val redactedFolderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            onSaveToDriveRedacted?.invoke(uri)
         }
     }
 
@@ -93,6 +103,58 @@ fun ShareOptionsSheet(
                 )
                 Spacer(Modifier.width(16.dp))
                 Text("Save to Google Drive", style = MaterialTheme.typography.bodyLarge)
+            }
+
+            if (onShareViaRedacted != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onShareViaRedacted() }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text("Share redacted\u2026", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Marked areas are hidden",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            if (onSaveToDriveRedacted != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { redactedFolderPicker.launch(null) }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text("Save redacted to Drive", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Marked areas are hidden",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }

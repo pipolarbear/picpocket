@@ -8,6 +8,7 @@ import com.picpocket.app.data.model.Page
 import com.picpocket.app.data.model.PageKind
 import com.picpocket.app.domain.ocr.FakeLayoutOcrEngine
 import com.picpocket.app.domain.render.PageRenderer
+import com.picpocket.app.domain.render.RedactionBurner
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -40,7 +41,7 @@ class RoutingPdfGeneratorTest {
         )
         val out = File.createTempFile("out", ".pdf")
         val generator = RoutingPdfGenerator(
-            SearchablePdfGenerator(FakeLayoutOcrEngine()),
+            SearchablePdfGenerator(FakeLayoutOcrEngine(), RedactionBurner()),
             NativePdfExporter(),
             PageRenderer(),
         )

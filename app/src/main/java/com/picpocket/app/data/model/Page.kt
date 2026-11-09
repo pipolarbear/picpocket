@@ -11,4 +11,6 @@ data class Page(
     val createdAt: Long,
     val kind: PageKind = PageKind.IMAGE,
     val pdfPageIndex: Int = 0,
+    /** Areas hidden when this page is exported redacted. */
+    val redactions: List<RedactionRect> = emptyList(),
 )

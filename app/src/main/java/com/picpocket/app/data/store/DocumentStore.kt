@@ -2,6 +2,7 @@ package com.picpocket.app.data.store
 
 import android.app.Application
 import com.picpocket.app.data.model.PageKind
+import com.picpocket.app.data.model.RedactionRect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -46,6 +47,8 @@ data class StoredPage(
     val createdAt: Long,
     val kind: PageKind = PageKind.IMAGE,
     val pdfPageIndex: Int = 0,
+    /** Areas hidden when a redacted export is generated. Synced inside metadata. */
+    val redactions: List<RedactionRect> = emptyList(),
 )
 
 private fun StoredDocument.normalizedPages(): StoredDocument {
@@ -416,6 +419,28 @@ class DocumentStore @Inject constructor(
             if (idx < 0) return@withLock Result.failure(Exception("Page $pageNumber not found"))
             doc.pages[idx] = doc.pages[idx].copy(ocrText = ocrText)
             writeMetadataTo(documentId, doc.copy(pages = doc.pages), metadataVersion(documentId) + 1, metadataPassphrase(documentId))
+        }
+    }
+
+    /** Replaces the hidden areas of one page (normalized page fractions). */
+    suspend fun updatePageRedactions(
+        documentId: String,
+        pageNumber: Int,
+        redactions: List<RedactionRect>,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val doc = readMetadata(documentId).getOrElse { return@withLock Result.failure(it) }
+            val idx = doc.pages.indexOfFirst { it.pageNumber == pageNumber }
+            if (idx < 0) return@withLock Result.failure(Exception("Page $pageNumber not found"))
+            doc.pages[idx] = doc.pages[idx].copy(
+                redactions = redactions.filter { it.isUsable() }.map { it.normalized() },
+            )
+            writeMetadataTo(
+                documentId,
+                doc.copy(pages = doc.pages, updatedAt = System.currentTimeMillis()),
+                metadataVersion(documentId) + 1,
+                metadataPassphrase(documentId),
+            )
         }
     }
 

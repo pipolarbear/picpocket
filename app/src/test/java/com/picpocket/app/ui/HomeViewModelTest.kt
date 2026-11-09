@@ -42,19 +42,21 @@ class HomeViewModelTest {
     private lateinit var workflowRepo: FakeWorkflowRepository
     private lateinit var app: Application
     private lateinit var viewModel: HomeViewModel
+    private lateinit var pdf: FakePdfGenerator
 
     @Before
     fun setUp() {
         repo = FakeDocumentRepository()
         workflowRepo = FakeWorkflowRepository()
         app = RuntimeEnvironment.getApplication() as Application
+        pdf = FakePdfGenerator()
         viewModel = HomeViewModel(
             app,
             repo,
             workflowRepo,
             FakeFolderWriter(),
             PageThumbCache(app, PageRenderer()),
-            FakePdfGenerator(),
+            pdf,
         )
     }
 
@@ -446,6 +448,34 @@ class HomeViewModelTest {
         viewModel.hideShareSheet()
         assertFalse(viewModel.uiState.value.showShareSheet)
         assertFalse(viewModel.uiState.value.shareFilteredDocs)
+    }
+
+    @Test
+    fun `a redacted export asks the generator to hide the marked areas`() = runTest {
+        val id = repo.createDocument("Doc").getOrThrow()
+        repo.addPage(id, "file:///page.jpg")
+        viewModel.toggleSelection(id)
+        viewModel.showExportDialog(redact = true)
+        assertTrue(viewModel.uiState.value.exportRedacted)
+
+        viewModel.exportPdf(app, Uri.parse("content://out/doc_redacted.pdf"))
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(true), pdf.redactedFlags)
+    }
+
+    @Test
+    fun `a normal export leaves the marked areas visible`() = runTest {
+        val id = repo.createDocument("Doc").getOrThrow()
+        repo.addPage(id, "file:///page.jpg")
+        viewModel.toggleSelection(id)
+        viewModel.showExportDialog()
+        assertFalse(viewModel.uiState.value.exportRedacted)
+
+        viewModel.exportPdf(app, Uri.parse("content://out/doc.pdf"))
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(false), pdf.redactedFlags)
     }
 
     @Test

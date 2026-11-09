@@ -85,6 +85,32 @@ class DocumentDetailViewModelTest {
     }
 
     @Test
+    fun `a redacted export dialog marks the export as redacted`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.showExportDialog(redact = true)
+        assertTrue(viewModel.uiState.value.exportRedacted)
+        assertTrue(viewModel.uiState.value.showExportDialog)
+
+        viewModel.showExportDialog()
+        assertFalse(viewModel.uiState.value.exportRedacted)
+    }
+
+    @Test
+    fun `saving a redacted copy writes a _redacted file name`() = runTest {
+        viewModel.loadDocument(documentId)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        val message = async { viewModel.messages.first() }
+        viewModel.saveToDrive(Uri.parse("content://folder"), redact = true)
+        coroutineRule.dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Saved to Drive as My_Document_redacted.pdf", message.await())
+        assertEquals("My_Document_redacted.pdf", folderWriter.writes.first().name)
+    }
+
+    @Test
     fun `saving to a folder reports the failure reason`() = runTest {
         folderWriter.writeResult = Result.failure(IOException("could not open the picked folder"))
         viewModel.loadDocument(documentId)

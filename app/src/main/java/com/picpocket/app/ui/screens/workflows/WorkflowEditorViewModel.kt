@@ -16,6 +16,7 @@ import com.picpocket.app.domain.workflow.model.Condition
 import com.picpocket.app.domain.workflow.model.RunStatus
 import com.picpocket.app.domain.workflow.model.TriggerEvent
 import com.picpocket.app.domain.workflow.model.Workflow
+import com.picpocket.app.domain.workflow.model.allNodes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -135,7 +136,12 @@ class WorkflowEditorViewModel @Inject constructor(
     /** Called after the user picks a SAF folder: keeps the grant and stores its real name. */
     fun onFolderPicked(nodeId: String, uri: Uri) {
         val persisted = folderAccess.takePersistable(uri)
-        setNodeParams(nodeId, ActionParams.SaveToFolder(uri.toString(), folderAccess.displayName(uri)))
+        val keepRedact = (_uiState.value.workflow.allNodes()
+            .firstOrNull { it.id == nodeId }?.params as? ActionParams.SaveToFolder)?.redact ?: false
+        setNodeParams(
+            nodeId,
+            ActionParams.SaveToFolder(uri.toString(), folderAccess.displayName(uri), redact = keepRedact),
+        )
         if (!persisted) {
             _uiState.update { it.copy(message = "Couldn't keep access to that folder — pick another") }
         }
@@ -266,6 +272,7 @@ class WorkflowEditorViewModel @Inject constructor(
     private companion object {
         fun defaultParams(type: ActionType): ActionParams = when (type) {
             ActionType.ENCRYPT -> ActionParams.Encrypt("")
+            ActionType.ZIP -> ActionParams.Zip()
             ActionType.SAVE_TO_FOLDER -> ActionParams.SaveToFolder("", "")
             ActionType.SEND_TO_APP -> ActionParams.SendToApp("com.whatsapp", "WhatsApp")
             ActionType.NOTIFY -> ActionParams.Notify("")

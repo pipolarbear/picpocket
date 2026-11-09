@@ -6,9 +6,11 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.picpocket.app.data.model.Page
+import com.picpocket.app.data.model.RedactionRect
 import com.picpocket.app.domain.ocr.FakeLayoutOcrEngine
 import com.picpocket.app.domain.ocr.OcrElement
 import com.picpocket.app.domain.ocr.OcrLayoutResult
+import com.picpocket.app.domain.render.RedactionBurner
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -46,9 +48,15 @@ class SearchablePdfGeneratorTest {
 
     private fun outFile(): File = File(app.cacheDir, "out_${System.nanoTime()}.pdf")
 
-    private fun generate(engine: FakeLayoutOcrEngine, pages: List<Page>, out: File): PdfResult =
+    private fun generate(
+        engine: FakeLayoutOcrEngine,
+        pages: List<Page>,
+        out: File,
+        redact: Boolean = false,
+    ): PdfResult =
         runBlocking {
-            SearchablePdfGenerator(engine).generate(app, pages, Uri.fromFile(out), PageSize.A4)
+            SearchablePdfGenerator(engine, RedactionBurner())
+                .generate(app, pages, Uri.fromFile(out), PageSize.A4, redact = redact)
         }
 
     @Test
@@ -66,6 +74,25 @@ class SearchablePdfGeneratorTest {
         assertTrue("expected success, was $result", result is PdfResult.Success)
         assertTrue(out.length() > 0)
         assertEquals(1, engine.layoutCalls)
+    }
+
+    @Test
+    fun exportsRedactedPdfWithMarkedAreas() {
+        val engine = FakeLayoutOcrEngine(
+            layout = OcrLayoutResult(
+                text = "secret",
+                elements = listOf(OcrElement("secret", 20, 20, 120, 60)),
+            ),
+        )
+        val page = pageFile(1).copy(
+            redactions = listOf(RedactionRect(0.05f, 0.05f, 0.4f, 0.4f)),
+        )
+        val out = outFile()
+
+        val result = generate(engine, listOf(page), out, redact = true)
+
+        assertTrue("expected success, was $result", result is PdfResult.Success)
+        assertTrue(out.length() > 0)
     }
 
     @Test

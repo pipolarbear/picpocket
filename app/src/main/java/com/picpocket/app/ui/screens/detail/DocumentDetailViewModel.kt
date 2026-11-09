@@ -74,6 +74,8 @@ data class DetailUiState(
     val showOverflowMenu: Boolean = false,
     val showExportDialog: Boolean = false,
     val exportPageSize: PageSize = PageSize.A4,
+    /** True when the export dialog is preparing the version with marked areas hidden. */
+    val exportRedacted: Boolean = false,
     val showRenameOverwriteDialog: Boolean = false,
     val renameOverwriteTargetName: String = "",
     val showRescanProgress: Boolean = false,
@@ -461,11 +463,11 @@ class DocumentDetailViewModel @Inject constructor(
         _uiState.update { it.copy(showShareSheet = false) }
     }
 
-    fun showExportDialog() {
+    fun showExportDialog(redact: Boolean = false) {
         val doc = _uiState.value.document ?: return
         val docPageSize = doc.pageSize?.let { try { PageSize.valueOf(it) } catch (_: Exception) { null } }
         val pageSize = docPageSize ?: prefs.getString("page_size", PageSize.A4.name)?.let { try { PageSize.valueOf(it) } catch (_: Exception) { null } } ?: PageSize.A4
-        _uiState.update { it.copy(showExportDialog = true, exportPageSize = pageSize) }
+        _uiState.update { it.copy(showExportDialog = true, exportPageSize = pageSize, exportRedacted = redact) }
     }
 
     fun hideExportDialog() {
@@ -478,12 +480,20 @@ class DocumentDetailViewModel @Inject constructor(
 
     fun exportPdf(context: Context, outputUri: Uri) {
         val docId = currentDocumentId
-        val pageSize = _uiState.value.exportPageSize
+        val state = _uiState.value
+        val pageSize = state.exportPageSize
+        val redact = state.exportRedacted
         if (docId.isEmpty()) return
         viewModelScope.launch {
             try {
                 val pages = repository.getPages(docId).getOrNull() ?: emptyList()
-                val result = searchablePdfGenerator.generate(context, pages, outputUri, pageSize)
+                val result = searchablePdfGenerator.generate(
+                    context,
+                    pages,
+                    outputUri,
+                    pageSize,
+                    redact = redact,
+                )
                 when (result) {
                     is com.picpocket.app.domain.export.PdfResult.Success -> {
                         hideExportDialog()
@@ -555,27 +565,28 @@ class DocumentDetailViewModel @Inject constructor(
         }
     }
 
-    fun shareViaSystem(context: Context) {
+    fun shareViaSystem(context: Context, redact: Boolean = false) {
         val doc = _uiState.value.document ?: return
         val docId = doc.id
         viewModelScope.launch {
-            val pdfUri = generatePdfToTempFile(docId) ?: return@launch
+            val pdfUri = generatePdfToTempFile(docId, redact) ?: return@launch
             val shareUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(pdfUri.path!!))
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/pdf"
                 putExtra(Intent.EXTRA_STREAM, shareUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Share PDF"))
+            context.startActivity(Intent.createChooser(intent, if (redact) "Share redacted PDF" else "Share PDF"))
         }
     }
 
-    fun saveToDrive(folderUri: Uri) {
+    fun saveToDrive(folderUri: Uri, redact: Boolean = false) {
         val doc = _uiState.value.document ?: return
-        val name = "${doc.name.replace(" ", "_").replace("/", "_")}.pdf"
+        val suffix = if (redact) "_redacted" else ""
+        val name = "${doc.name.replace(" ", "_").replace("/", "_")}$suffix.pdf"
         _uiState.update { it.copy(savingToDrive = true) }
         viewModelScope.launch {
-            val pdfUri = generatePdfToTempFile(doc.id)
+            val pdfUri = generatePdfToTempFile(doc.id, redact)
             val result = if (pdfUri == null) {
                 Result.failure(IOException("could not generate the PDF"))
             } else {
@@ -593,17 +604,17 @@ class DocumentDetailViewModel @Inject constructor(
         }
     }
 
-    private suspend fun generatePdfToTempFile(documentId: DocumentId): Uri? {
+    private suspend fun generatePdfToTempFile(documentId: DocumentId, redact: Boolean = false): Uri? {
         val pages = repository.getPages(documentId).getOrNull() ?: return null
         if (pages.isEmpty()) return null
         val app = getApplication<Application>()
         val tempDir = File(app.cacheDir, "exports")
         tempDir.mkdirs()
-        val tempFile = File(tempDir, "${documentId}.pdf")
+        val tempFile = File(tempDir, "${documentId}${if (redact) "_redacted" else ""}.pdf")
         val doc = _uiState.value.document
         val docPageSize = doc?.pageSize?.let { try { PageSize.valueOf(it) } catch (_: Exception) { null } }
         val pageSize = docPageSize ?: prefs.getString("page_size", PageSize.A4.name)?.let { try { PageSize.valueOf(it) } catch (_: Exception) { null } } ?: PageSize.A4
-        val result = searchablePdfGenerator.generate(app, pages, Uri.fromFile(tempFile), pageSize)
+        val result = searchablePdfGenerator.generate(app, pages, Uri.fromFile(tempFile), pageSize, redact = redact)
         return when (result) {
             is com.picpocket.app.domain.export.PdfResult.Success -> Uri.parse(result.uri)
             is com.picpocket.app.domain.export.PdfResult.Error -> null
@@ -708,6 +719,15 @@ class DocumentDetailViewModel @Inject constructor(
             _uiState.update { it.copy(collateError = "Select at least two pages") }
             return
         }
+        if (selected.any { it.redactions.isNotEmpty() }) {
+            _uiState.update {
+                it.copy(
+                    collateBusy = false,
+                    collateError = "Clear the marked areas on the selected pages before collating",
+                )
+            }
+            return
+        }
         _uiState.update { it.copy(collateBusy = true, collateError = null) }
         viewModelScope.launch {
             val outcome = withContext(Dispatchers.Default) {
@@ -795,6 +815,13 @@ class DocumentDetailViewModel @Inject constructor(
         val preview = state.collatePreview ?: return
         val selected = state.collateOrder.filter { it in state.collateSelection }
         if (selected.size < 2) return
+        val selectedPages = state.pages.filter { it.pageNumber in selected }
+        if (selectedPages.any { it.redactions.isNotEmpty() }) {
+            _uiState.update {
+                it.copy(collateError = "Clear the marked areas on the selected pages before collating")
+            }
+            return
+        }
         _uiState.update { it.copy(collateBusy = true) }
         viewModelScope.launch {
             val uri = withContext(Dispatchers.Default) {

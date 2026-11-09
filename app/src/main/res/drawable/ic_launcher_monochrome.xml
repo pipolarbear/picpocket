@@ -4,22 +4,23 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Themed (monochrome) icon: page tucked into a pocket, tinted by the system. -->
     <group
         android:pivotX="54"
         android:pivotY="54"
-        android:scaleX="0.86"
-        android:scaleY="0.86">
+        android:scaleX="0.95"
+        android:scaleY="0.95">
         <group
             android:pivotX="54"
-            android:pivotY="48"
-            android:rotation="-3">
+            android:pivotY="46"
+            android:rotation="-4">
             <path
                 android:fillColor="#FFFFFF"
-                android:pathData="M45,24 L63,24 L69,30 L69,64 Q69,69 64,69 L45,69 Q40,69 40,64 L40,29 Q40,24 45,24 Z" />
+                android:pathData="M41,20 L64,20 L73,29 L73,66 Q73,72 67,72 L41,72 Q35,72 35,66 L35,26 Q35,20 41,20 Z" />
         </group>
         <path
             android:fillColor="#FFFFFF"
-            android:fillAlpha="0.65"
-            android:pathData="M29,56 L79,56 L79,77 Q79,85 71,85 L37,85 Q29,85 29,77 Z" />
+            android:fillAlpha="0.55"
+            android:pathData="M24,52 L84,52 L84,75 Q84,88 71,88 L37,88 Q24,88 24,75 Z" />
     </group>
 </vector>

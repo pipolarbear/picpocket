@@ -19,10 +19,11 @@ class EncryptAction @Inject constructor() : WorkflowAction {
     override val execution = Execution.HEADLESS
 
     override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult {
-        val passphrase = (params as? ActionParams.Encrypt)?.passphrase
+        val config = params as? ActionParams.Encrypt
             ?: return ActionResult.Failure("encrypt: passphrase missing")
+        val passphrase = config.passphrase
         if (passphrase.isBlank()) return ActionResult.Failure("encrypt: passphrase is blank")
-        val source = ctx.ensurePdf(input)
+        val source = ctx.ensurePdf(input, redact = config.redact)
         val encrypted = ctx.cipher.encrypt(passphrase, source.readBytes(ctx))
         val out = File(ctx.workDir, "${ctx.document.id}.enc")
         out.writeBytes(encrypted)
@@ -36,7 +37,7 @@ class ZipAction @Inject constructor() : WorkflowAction {
     override val execution = Execution.HEADLESS
 
     override suspend fun execute(ctx: WorkflowContext, input: Artifact?, params: ActionParams): ActionResult {
-        val source = ctx.ensurePdf(input)
+        val source = ctx.ensurePdf(input, redact = (params as? ActionParams.Zip)?.redact ?: false)
         val base = File(Uri.parse(source.uri).path ?: "artifact").name
         val zip = ZipUtil.create(
             ctx.workDir,
@@ -72,7 +73,7 @@ class SaveToFolderAction @Inject constructor(
         if (!folderAccess.isPersisted(treeUri)) {
             return ActionResult.Failure("save-to-folder: folder access was revoked; pick it again")
         }
-        val source = ctx.ensurePdf(input)
+        val source = ctx.ensurePdf(input, redact = config.redact)
         val name = "${ctx.document.name.replace(" ", "_").replace("/", "_")}.${source.extension()}"
         return folderWriter.write(treeUri, name, source.mime, Uri.parse(source.uri)).fold(
             onSuccess = { saved ->

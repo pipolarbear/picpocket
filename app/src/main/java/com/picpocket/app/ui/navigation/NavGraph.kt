@@ -24,7 +24,7 @@ object Routes {
     const val SCANNER = "scanner"
     const val APPEND_SCANNER = "scanner/{documentId}"
     const val DOCUMENT_DETAIL = "document/{documentId}"
-    const val PAGE_VIEWER = "viewer/{documentId}/{pageIndex}"
+    const val PAGE_VIEWER = "viewer/{documentId}/{pageIndex}?redact={redact}"
     const val SETTINGS = "settings"
     const val SYNC = "sync"
     const val DONATE = "donate"
@@ -35,7 +35,8 @@ object Routes {
     const val PAIRING = "pairing"
 
     fun documentDetail(documentId: String) = "document/$documentId"
-    fun pageViewer(documentId: String, pageIndex: Int) = "viewer/$documentId/$pageIndex"
+    fun pageViewer(documentId: String, pageIndex: Int, redact: Boolean = false) =
+        "viewer/$documentId/$pageIndex?redact=$redact"
     fun appendScanner(documentId: String) = "scanner/$documentId"
     fun workflows(workflowId: Long? = null) =
         if (workflowId == null) "workflows" else "workflows?workflowId=$workflowId"
@@ -72,6 +73,9 @@ fun PicPocketNavGraph(navController: NavHostController) {
                 onPageView = { docId, pageIndex ->
                     navController.navigate(Routes.pageViewer(docId, pageIndex))
                 },
+                onOpenRedact = { docId, pageIndex ->
+                    navController.navigate(Routes.pageViewer(docId, pageIndex, redact = true))
+                },
                 onAddPage = { docId ->
                     navController.navigate(Routes.appendScanner(docId))
                 },
@@ -82,14 +86,17 @@ fun PicPocketNavGraph(navController: NavHostController) {
             arguments = listOf(
                 navArgument("documentId") { type = NavType.StringType },
                 navArgument("pageIndex") { type = NavType.IntType },
+                navArgument("redact") { type = NavType.BoolType; defaultValue = false },
             ),
         ) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId") ?: return@composable
             val pageIndex = backStackEntry.arguments?.getInt("pageIndex") ?: 0
+            val redact = backStackEntry.arguments?.getBoolean("redact") ?: false
             PageViewerScreen(
                 documentId = documentId,
                 initialPageIndex = pageIndex,
                 onNavigateBack = { navController.popBackStack() },
+                initialRedactMode = redact,
             )
         }
         composable(

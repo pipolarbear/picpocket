@@ -1,20 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="256" height="256">
-  <!-- Background -->
-  <rect x="0" y="0" width="108" height="108" fill="#1565C0" rx="20" ry="20"/>
-  <!-- Scroll (in adaptive icon: -15° rotation, 0.81× scale around center 54,54) -->
-  <g transform="translate(54,54) scale(0.81) rotate(-15) translate(-54,-54)">
-    <!-- Scroll body -->
-    <path d="M32,36 h44 a4,4 0,0,1 4,4 v28 a4,4 0,0,1 -4,4 h-44 a4,4 0,0,1 -4,-4 v-28 a4,4 0,0,1 4,-4 z" fill="#FFFFFF"/>
-    <!-- Top roll -->
-    <path d="M30,30 h48 a5,5 0,0,1 5,5 v5 a5,5 0,0,1 -5,5 h-48 a5,5 0,0,1 -5,-5 v-5 a5,5 0,0,1 5,-5 z" fill="#E3F2FD"/>
-    <!-- Bottom roll -->
-    <path d="M30,68 h48 a5,5 0,0,1 5,5 v5 a5,5 0,0,1 -5,5 h-48 a5,5 0,0,1 -5,-5 v-5 a5,5 0,0,1 5,-5 z" fill="#E3F2FD"/>
-    <!-- Text line 1 -->
-    <path d="M40,44 h28 v2.5 h-28 z" fill="#1565C0"/>
-    <!-- Text line 2 -->
-    <path d="M40,52.5 h20 v2.5 h-20 z" fill="#1565C0"/>
-    <!-- Text line 3 -->
-    <path d="M40,61 h24 v2.5 h-24 z" fill="#1565C0"/>
+  <defs>
+    <linearGradient id="pocket" x1="54" y1="52" x2="54" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#0B4F4A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- No background plate: the art floats on whatever the host shows. -->
+  <g transform="translate(54,54) scale(0.95) translate(-54,-54)">
+    <!-- Page, tilted as if tucked into the pocket. -->
+    <g transform="rotate(-4 54 46)">
+      <path fill="#2B3A38" opacity="0.22"
+            d="M41,21.5 L64,21.5 L73,30.5 L73,67 Q73,72.5 67.5,72.5 L41,72.5 Q35.5,72.5 35.5,67 L35.5,27 Q35.5,21.5 41,21.5 Z"/>
+      <path fill="#FFFFFF" stroke="#B9CBC6" stroke-width="1" stroke-linejoin="round"
+            d="M41,20 L64,20 L73,29 L73,66 Q73,72 67,72 L41,72 Q35,72 35,66 L35,26 Q35,20 41,20 Z"/>
+      <path fill="#D8E6E2" d="M64,20 L73,29 L64,29 Z"/>
+      <path fill="#FFB020" d="M42,38 L67,38 Q70.5,38 70.5,41.5 Q70.5,45 67,45 L42,45 Q38.5,45 38.5,41.5 Q38.5,38 42,38 Z"/>
+      <path fill="#D8E6E2" d="M39,49 L61,49 L61,52 L39,52 Z"/>
+    </g>
+
+    <!-- Pocket: deep teal, no background plate behind it. -->
+    <path fill="url(#pocket)" d="M24,52 L84,52 L84,75 Q84,88 71,88 L37,88 Q24,88 24,75 Z"/>
+    <path fill="#2FA79B" d="M24,52 L84,52 L84,58 Q84,60.5 81.5,60.5 L26.5,60.5 Q24,60.5 24,58 Z"/>
+    <path fill="none" stroke="#5FBEB2" stroke-width="1" stroke-linecap="round"
+          d="M28,62 L28,75 Q28,84 37,84 L71,84 Q80,84 80,75 L80,62"/>
+    <circle cx="75" cy="73" r="2.6" fill="#C2703A"/>
   </g>
 </svg>
